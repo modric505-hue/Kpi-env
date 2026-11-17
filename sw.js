@@ -1,15 +1,16 @@
 /* Mode hors connexion : l'appli et ses polices sont gardées en cache après la première visite. */
-const V = "indicateurs-v4";
+const V = "indicateurs-v5";
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
 });
 self.addEventListener("activate", e => {
-  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== V).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => /^indicateurs-v\d+$/.test(k) && k !== V).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 self.addEventListener("fetch", e => {
   const r = e.request;
   if (r.method !== "GET") return;
+  if (new URL(r.url).pathname.indexOf("/ancienne/") !== -1) return;
   if (r.mode === "navigate") {
     e.respondWith(fetch(r).then(res => { const cp = res.clone(); caches.open(V).then(c => c.put("./index.html", cp)); return res; })
       .catch(() => caches.match("./index.html")));
