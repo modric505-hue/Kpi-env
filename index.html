@@ -341,6 +341,13 @@ label.chk input{width:22px;height:22px;margin:1px 0 0;accent-color:var(--good)}
 
 [hidden]{display:none!important}
 
+/* scope 3 */
+.st.n{background:var(--bg);color:var(--muted);border:1px solid var(--line);font-family:var(--mono);font-weight:600}
+.catn{font-family:var(--display);font-size:64px;font-weight:800;line-height:1;color:var(--u);min-width:76px;text-align:center}
+.catmini{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:8px;background:color-mix(in srgb,var(--ukm) 14%,var(--surface));color:var(--ukm);font-family:var(--mono);font-weight:600;font-size:13px;flex:none}
+.lesson .bars{margin-top:0}
+.lesson .bars+.hint{margin-top:-8px}
+
 </style>
 </head>
 <body>
@@ -1743,13 +1750,662 @@ WL.CASE = {}; WL.CASES.forEach(function (c) { WL.CASE[c.id] = c; });
 
 })(window.WL);
 
+/* Scope 3 : la chaîne de valeur.
+   Sept notions (m11 à m17), simulateurs, exercices, confusions, fils rouges, questions de quiz
+   et fiches des 15 catégories du GHG Protocol. S'ajoute aux structures de phys.js. */
+(function (WL) {
+"use strict";
+
+var f = WL.fmt, R = WL.REF, fig = WL.flowFig;
+function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+function row(l, v, u, hi) { return { l: l, v: v, u: u, hi: !!hi }; }
+function num(q, ans, unit, steps, wrong) { return { type: "num", q: q, ans: ans, unit: unit, steps: steps, wrong: wrong || [] }; }
+function mcq(q, good, bad, e) { return { type: "mc", q: q, o: [[good, 1]].concat(bad.map(function (b) { return [b, 0]; })), e: e }; }
+function bars(items, unit) {
+  var max = Math.max.apply(null, items.map(function (b) { return b[1]; }));
+  return '<div class="bars">' + items.map(function (b) {
+    return '<div class="bar"><span>' + b[0] + '</span><i style="width:' + Math.max(2, Math.round(b[1] / max * 100)) + '%"></i><b>' + f(b[1], b[1] < 10 ? 1 : 0) + (unit ? ' ' + unit : '') + '</b></div>';
+  }).join("") + '</div>';
+}
+
+/* ---------- valeurs de référence ---------- */
+R.gazoleComb = 2.49; R.gazoleAmont = 0.61;            /* 3,10 kgCO2e/L au total */
+R.gazComb = 0.181; R.gazAmont = 0.034;                /* 0,215 kgCO2e/kWh PCS au total */
+R.avion = { court: [0.230, 0.126], moyen: [0.178, 0.098], long: [0.152, 0.083] };   /* [avec traînées, sans] */
+R.tgv = 0.0029; R.voiture = 0.20;
+R.ratio = { fin: 70, it: 75, telecom: 136, hotel: 250, metal: 317 };
+R.paiement = { magasin: 2.45, ligne: 11.9 };          /* gCO2e par transaction */
+
+/* Worldline, rapport de durabilité 2025 (tCO2e) */
+var W = WL.S3WL = { year: 2025, s1: 5708, s2: 2457, s2lb: 8815, s3: 320146,
+  cats: { 1: 157574, 2: 9333, 3: 3188, 4: 1223, 5: 345, 6: 2416, 7: 13562, 8: 27134, 11: 101093, 12: 4278 } };
+W.total = W.s1 + W.s2 + W.s3;
+
+WL.SOURCES = WL.SOURCES.concat([
+  ["Scope 3 : les 15 catégories et leurs règles", "8 catégories en amont, 7 en aval", "GHG Protocol, Corporate Value Chain (Scope 3) Accounting and Reporting Standard (2011) et Technical Guidance for Calculating Scope 3 Emissions (2013)"],
+  ["Worldline : émissions 2025", "Scope 1 : 5 708 t · scope 2 : 2 457 t (market-based), 8 815 t (location-based) · scope 3 : 320 146 t", "Worldline, rapport de durabilité 2025. Le détail par catégorie est dans « Fiches », puis « Scope 3 ». À vérifier dans le rapport avant tout usage professionnel"],
+  ["Ratios monétaires (achats)", "Services financiers : 70 · programmation et conseil informatique : 75 · télécommunications : 136 · hébergement et restauration : 250 · produits métalliques, hors machines : 317 kgCO₂e/k€ HT", "ADEME, Base Carbone (V23) : ratios en euros de 2023 hors taxes, pour 56 familles de produits et de services, incertitude de l'ordre de 80 %. Ils remplacent en 2025 des ratios plus anciens : 170 kgCO₂e/k€ pour les télécommunications, par exemple"],
+  ["Gazole et gaz naturel : combustion et amont", "Gazole : 2,49 + 0,61 = 3,10 kgCO₂e/L · gaz naturel : 0,181 + 0,034 = 0,215 kgCO₂e/kWh PCS", "ADEME, Base Carbone (versions 22 et 23)"],
+  ["Électricité, France : combustion et amont", "Mix 2023 : 0,039 kgCO₂e/kWh pour la combustion en centrale, 0,013 pour l'amont, plus une part pour le transport et la distribution", "ADEME, Base Carbone (V23)"],
+  ["Avion, par passager et par km", "Court-courrier : 0,230 (0,126 sans traînées) · moyen-courrier : 0,178 (0,098) · long-courrier : 0,152 (0,083) kgCO₂e", "ADEME, Base Carbone : facteurs par distance et taille d'avion, encore très cités. Les versions récentes de la Base Empreinte donnent des valeurs voisines : le simulateur Impact CO₂ affiche en 2026 environ 0,225, 0,185 et 0,178. Pour un bilan, utilise les facteurs retenus par Worldline"],
+  ["Train à grande vitesse, France", "0,0029 kgCO₂e par passager.km", "ADEME, Base Empreinte"],
+  ["Voiture thermique, par km", "≈ 0,20 kgCO₂e/km", "Repère calculé : 6,5 L/100 km × 3,10 kgCO₂e/L. Le rapport de durabilité 2025 de Worldline cite la même valeur pour les taxis"],
+  ["Empreinte d'un paiement", "≈ 2,45 gCO₂e en magasin · ≈ 11,9 gCO₂e en ligne", "Analyse de cycle de vie de 2023, citée dans le rapport de durabilité 2025 de Worldline"],
+  ["Le scope 3 dans le droit et les référentiels", "Bilan réglementaire : émissions indirectes significatives · ESRS E1 : scopes 1, 2 et 3 · SBTi : objectif requis si le scope 3 atteint 40 % du total, couvrant au moins 67 % du scope 3", "Décret n° 2022-982 du 1ᵉʳ juillet 2022 ; normes ESRS révisées, acte délégué du 3 juillet 2026 ; critères SBTi de court terme (une version 2 du standard est en préparation)"]
+]);
+
+WL.DOMAINS.achats = "Achats"; WL.DOMAINS.compta = "Comptabilité carbone"; WL.DOMAINS.prod = "Produits";
+
+/* ---------- les sept notions ---------- */
+var S3 = [
+{ id: "m11", track: "s3", title: "La chaîne de valeur", sub: "Scopes 1, 2 et 3 : qui émet, et pour qui", dom: ["compta", "pol"],
+  entry: ["Worldline, émissions 2025", ["Scope 1", "5 708 tCO₂e"], ["Scope 2 (market-based)", "2 457 tCO₂e"], ["Scope 3", "320 146 tCO₂e"]], entryTag: "rapport de durabilité",
+  ask: "Worldline vend des services de paiement, pas de l'acier. Pourquoi son scope 3 pèse-t-il 39 fois les deux autres réunis ?",
+  body: function () { return `
+<p>Les scopes rangent les émissions selon <b>qui tient la source</b>. Scope 1 : cela brûle ou fuit dans un équipement que l'entreprise possède ou contrôle. Scope 2 : la production de l'électricité, de la chaleur, du froid ou de la vapeur qu'elle achète. <b>Scope 3</b> : toutes les autres émissions indirectes. Elles ont lieu chez d'autres, mais à cause de l'activité de l'entreprise.</p>
+${fig([{ t: "Amont", s: "fournisseurs" }, { t: "Entreprise", s: "scopes 1 et 2", k: 1 }, { t: "Aval", s: "clients" }], { alt: "Amont, entreprise, aval", cap: "Le scope 3 couvre ce qui se passe avant et après l'entreprise. Catégories 1 à 8 : l'amont. Catégories 9 à 15 : l'aval." })}
+<p>Le scope 3 de l'un est le scope 1 ou 2 d'un autre. Le gazole brûlé par un transporteur est son scope 1. C'est aussi le scope 3 de l'entreprise qui lui confie ses colis. La même tonne figure dans deux bilans : c'est voulu, et c'est pourquoi on n'additionne jamais les bilans de plusieurs entreprises.</p>
+<p>Le GHG Protocol découpe le scope 3 en <b>15 catégories</b>. Chez Worldline, deux dominent : les achats et l'usage des produits vendus.</p>
+${bars([["Achats (cat. 1)", 157574], ["Usage des produits vendus (cat. 11)", 101093], ["Actifs loués (cat. 8)", 27134], ["Domicile-travail (cat. 7)", 13562], ["Immobilisations (cat. 2)", 9333], ["Cinq autres catégories", 11450]], "t")}
+<p class="hint">Scope 3 de Worldline en 2025, en tCO₂e. Source : rapport de durabilité 2025.</p>`; },
+  pre: [
+    ["Amont, aval : dans quel sens ?", "On suit le trajet des biens et de l'argent. L'amont, c'est ce que l'entreprise achète et ce qui lui arrive : fournisseurs, énergie, déplacements, locaux loués. L'aval, c'est ce qui se passe après la vente : transport vers le client, utilisation du produit, fin de vie."],
+    ["Qui demande de compter le scope 3 ?", "En France, le décret n° 2022-982 du 1ᵉʳ juillet 2022 a étendu le bilan d'émissions réglementaire aux émissions indirectes significatives, pour les personnes publiques et les entreprises tenues de publier des informations de durabilité. En Europe, la norme ESRS E1 demande les émissions des scopes 1, 2 et 3 ; sa version révisée, adoptée le 3 juillet 2026, conserve les trois scopes. Hors du droit, l'initiative SBTi exige un objectif sur le scope 3 dès qu'il atteint 40 % du total, et cet objectif doit couvrir au moins 67 % du scope 3."],
+    ["Pourquoi compter des émissions qu'on ne contrôle pas ?", "Parce que l'entreprise les déclenche par ses choix : ce qu'elle achète, à qui, et comment elle conçoit ses produits. Elle n'a pas la main sur la source, mais elle a une influence. Le scope 3 mesure cette influence. Il ne désigne pas un coupable."]
+  ],
+  formula: ["Part du scope 3", "Scope 3 ÷ (Scope 1 + Scope 2 + Scope 3)"],
+  example: `Worldline, 2025 : 320 146 ÷ (5 708 + 2 457 + 320 146) = <b>${f(W.s3 / W.total * 100, 1)} %</b>, que le rapport arrondit à 98 %.`,
+  limits: ["Le total dépend du scope 2 retenu : 2 457 t en market-based, 8 815 t en location-based.", "Un scope 3 élevé ne signale pas une entreprise plus émettrice qu'une autre : il reflète la place des achats et des produits dans son activité.", "Les incertitudes du scope 3 sont bien plus fortes que celles des scopes 1 et 2 : un écart de quelques pour cent n'est pas forcément réel."],
+  bridges: [["m5", "Les scopes 1 et 2 partent des données d'activité que tu collectes déjà : litres, kWh, kilogrammes."], ["m12", "La catégorie 1, les achats, est la plus lourde. Elle se calcule d'abord par les dépenses."], ["m14", "Chaque litre et chaque kWh des scopes 1 et 2 a aussi un amont, compté en scope 3."]],
+  proof: {
+    explain: { q: "Explique à un collègue des achats ce qu'est le scope 3, et pourquoi il pèse si lourd chez Worldline.", model: "Le scope 3 regroupe les émissions indirectes qui ont lieu chez d'autres, en amont et en aval, à cause de notre activité : la fabrication de ce que nous achetons, les déplacements, les locaux loués, l'utilisation de nos produits par les clients. Le scope 1 couvre ce qui brûle ou fuit chez nous, le scope 2 l'énergie que nous achetons. Chez Worldline, le scope 3 représente environ 98 % du total en 2025, surtout par les achats et l'usage des produits vendus. Ces émissions sont aussi le scope 1 ou 2 de nos fournisseurs et de nos clients : c'est normal, les bilans ne s'additionnent pas.",
+      keys: ["Scope 3 : des émissions indirectes, chez d'autres, en amont et en aval", "Scope 1 : combustion et fuites chez soi ; scope 2 : énergie achetée", "Chez Worldline : environ 98 % du total, par les achats et l'usage des produits", "Le scope 3 de l'un est le scope 1 ou 2 d'un autre"] },
+    apply: [
+      { q: "Un transporteur livre des terminaux de paiement aux commerçants. Le vendeur des terminaux paie la prestation. Le gazole du camion relève…", o: [["du scope 1 du transporteur et du scope 3 du vendeur", 1, "", "Le transporteur brûle le gazole : scope 1. Le vendeur achète la prestation : scope 3, catégorie 4."], ["du scope 1 des deux", 0, "scope", "Le vendeur ne possède pas le camion et ne le conduit pas : la source n'est pas chez lui."], ["du scope 3 des deux", 0, "scope", "Pour celui qui brûle le carburant dans son propre véhicule, c'est toujours du scope 1."]] },
+      { q: "Une entreprise émet 600 t en scope 1, 400 t en scope 2 et 1 000 t en scope 3. Selon les critères SBTi, doit-elle fixer un objectif sur son scope 3 ?", o: [["Oui : le scope 3 atteint 50 % du total", 1, "", "1 000 ÷ 2 000 = 50 %. Le seuil est de 40 % du total."], ["Non : il ne dépasse pas les scopes 1 et 2 réunis", 0, "pct", "Le critère n'est pas de dépasser les autres scopes, mais d'atteindre 40 % du total."], ["Non : il faudrait plus de 67 %", 0, "pct", "67 % est la part du scope 3 que l'objectif doit couvrir, pas le seuil qui le rend obligatoire."]] }
+    ] } },
+
+{ id: "m12", track: "s3", title: "Les achats, par les dépenses", sub: "Catégories 1 et 2 : des euros aux tonnes", dom: ["achats", "eco", "clim"],
+  entry: ["Extrait de la base achats", ["Famille d'achat", "Conseil informatique"], ["Montant de l'année", "600 000 € HT"]],
+  ask: "Aucun litre, aucun kWh sur cette ligne. Comment transformer des euros en tonnes de CO₂e ?",
+  body: function () { return `
+<p>Quand on achète un service ou un produit, on ignore presque toujours les litres et les kWh que le fournisseur a consommés. On connaît en revanche le montant payé. La <b>méthode par les dépenses</b> (spend-based) s'appuie sur un <b>ratio monétaire</b> : les émissions moyennes d'un secteur pour mille euros.</p>
+${fig([{ t: "Dépense", s: "600 k€ HT" }, { t: "× Ratio", s: "75 kg/k€" }, { t: "Émissions", s: "45 tCO₂e", k: 1 }], { alt: "Dépense fois ratio monétaire égale émissions", cap: "La logique est celle du litre de gazole : une donnée d'activité multipliée par un facteur. Ici, la donnée d'activité est un montant." })}
+<p>Le ratio varie beaucoup d'une famille d'achat à l'autre. C'est pourquoi le classement de chaque dépense compte autant que son montant.</p>
+${bars([["Services financiers", R.ratio.fin], ["Conseil informatique", R.ratio.it], ["Télécommunications", R.ratio.telecom], ["Hébergement, restauration", R.ratio.hotel], ["Produits métalliques", R.ratio.metal]], "kg/k€")}
+<p class="hint">Ratios monétaires de l'ADEME, en kgCO₂e par millier d'euros de 2023, hors taxes.</p>
+<p>Chez Worldline, d'après le rapport de durabilité 2025, chaque code d'achat est multiplié par un ratio monétaire de l'ADEME. La catégorie 1 pèse 157 574 t, soit 49 % du scope 3.</p>
+<p><b>Et les immobilisations ?</b> Un serveur ou un bâtiment se calcule de la même façon, mais va en catégorie 2. Le GHG Protocol compte ses émissions de fabrication en totalité l'année de l'achat, sans les étaler comme un amortissement.</p>`; },
+  pre: [
+    ["D'où vient un ratio monétaire ?", "Des comptes nationaux. On prend les émissions totales d'un secteur de l'économie et on les divise par sa production en euros. On obtient une moyenne : tant de kgCO₂e par millier d'euros. L'ADEME en publie pour 56 familles de produits et de services, en euros hors taxes ; les plus récents valent pour l'année 2023. Leur incertitude est de l'ordre de 80 %."],
+    ["k€, HT, TTC : les pièges d'unité", "Le ratio s'applique à des milliers d'euros (k€), hors taxes. 600 000 € font 600 k€. Appliquer le ratio à des euros donne un résultat 1 000 fois trop grand. L'appliquer à un montant TTC le gonfle de la TVA."],
+    ["Achat courant ou immobilisation ?", "Un achat courant est consommé dans l'année : prestation, licence, fournitures. Une immobilisation dure plusieurs années : serveur, bâtiment, véhicule acheté. Le premier va en catégorie 1, la seconde en catégorie 2. La méthode française Bilan Carbone, elle, étale les immobilisations sur leur durée d'amortissement : vérifie toujours le référentiel utilisé."]
+  ],
+  formula: ["Émissions (kgCO₂e)", "Dépense (k€ HT) × Ratio monétaire (kgCO₂e/k€)"],
+  example: `600 k€ de conseil informatique × 75 kgCO₂e/k€ = ${f(600 * 75)} kgCO₂e, soit <b>${f(600 * 75 / 1000)} tCO₂e</b>. La même somme en produits métalliques pèserait 600 × 317 = <b>${f(600 * R.ratio.metal / 1000, 0)} tCO₂e</b>, soit environ quatre fois plus.`,
+  limits: ["Un ratio est une moyenne de secteur : il ne distingue pas un fournisseur sobre d'un fournisseur très émetteur.", "Le calcul suit les prix : si un fournisseur augmente ses tarifs, les émissions calculées montent sans que rien n'ait changé physiquement.", "Négocier un prix plus bas fait baisser le résultat, pas les émissions réelles.", "Les ratios sont mis à jour : ceux de l'ADEME ont été remplacés en 2025. Deux années calculées avec deux jeux de ratios ne se comparent pas directement."],
+  bridges: [["m5", "Même structure que le facteur d'émission : seule la donnée d'activité change, des euros au lieu de litres."], ["m13", "Avant d'expliquer une hausse, il faut séparer ce qui vient des dépenses et ce qui vient du ratio."], ["m10", "Le coût par tonne évitée sert aussi à comparer des actions sur les achats."]],
+  proof: {
+    explain: { q: "Explique la méthode par les dépenses à un acheteur, avec ses deux principales limites.", model: "On multiplie le montant hors taxes d'un achat, en milliers d'euros, par un ratio monétaire : les émissions moyennes du secteur pour mille euros. Par exemple, 600 k€ de conseil informatique à 75 kgCO₂e/k€ donnent 45 tCO₂e. Première limite : c'est une moyenne, qui ne distingue pas un bon fournisseur d'un mauvais. Deuxième limite : le résultat suit les prix, donc l'inflation ou une négociation le font bouger sans changement physique. La méthode sert à repérer les gros postes, pas à mesurer finement.",
+      keys: ["Montant HT en k€ × ratio monétaire du secteur", "Un exemple chiffré correct", "Limite : une moyenne, aveugle au fournisseur réel", "Limite : le résultat suit les prix, pas la physique"] },
+    apply: [
+      { q: "Deux fournisseurs réalisent la même prestation de conseil informatique. Le premier facture 100 k€, le second 80 k€. Par la méthode des dépenses, lequel « émet » le moins ?", o: [["Le second, mais seulement parce qu'il est moins cher", 1, "", "80 × 75 = 6 t, contre 7,5 t. Le calcul suit le prix : il ne dit rien des émissions réelles de chacun."], ["Le second : il est donc plus vertueux", 0, "spend", "Le ratio est le même pour les deux. L'écart vient du seul prix, pas d'une meilleure performance."], ["Aucun : le calcul donne le même résultat pour une prestation identique", 0, "spend", "Physiquement, peut-être. Mais la méthode par les dépenses donne deux résultats différents : c'est sa limite."]] },
+      { q: "Une entreprise achète pour 2 000 k€ de serveurs, amortis sur 5 ans en comptabilité. Selon le GHG Protocol, quelle part de leurs émissions de fabrication entre dans le bilan de l'année d'achat ?", o: [["100 %, en catégorie 2", 1, "", "Le GHG Protocol compte les immobilisations en totalité l'année de l'acquisition, sans amortissement."], ["20 %, comme l'amortissement comptable", 0, "s3cat", "C'est la logique comptable, et celle de la méthode Bilan Carbone. Le GHG Protocol, lui, n'étale pas."], ["100 %, en catégorie 1", 0, "s3cat", "Un bien durable inscrit à l'actif est une immobilisation : catégorie 2."]] }
+    ] } },
+
+{ id: "m13", track: "s3", title: "Lire une variation", sub: "Volume, prix, facteur : d'où vient l'écart ?", dom: ["achats", "eco", "compta"],
+  entry: ["Comparaison de deux années", ["Achats de télécommunications, année 1", "1 020 tCO₂e"], ["Achats de télécommunications, année 2", "1 088 tCO₂e"]],
+  ask: "Les émissions montent de 68 t. A-t-on acheté plus, payé plus cher, ou est-ce le ratio qui a changé ?",
+  body: function () { return `
+<p>Une émission calculée est le produit de deux nombres : une <b>donnée d'activité</b> et un <b>facteur</b>. Quand le résultat bouge, l'un des deux a bougé, ou les deux. Avant de commenter une hausse, on la décompose.</p>
+<p>Ici, les dépenses sont passées de 6 000 à 8 000 k€, et le ratio de 170 à 136 kgCO₂e/k€ après une mise à jour de la base de facteurs.</p>
+${fig([{ t: "Volume", s: "+340 t" }, { t: "+ Facteur", s: "−272 t" }, { t: "Écart", s: "+68 t", k: 1 }], { alt: "Effet volume plus effet facteur égale écart", cap: "Une forte hausse des dépenses est presque effacée par la baisse du ratio. Le chiffre final cache les deux mouvements." })}
+<p><b>L'effet volume</b> est l'écart qu'on aurait eu si le ratio n'avait pas changé : (dépense de l'année 2 − dépense de l'année 1) × ratio de l'année 1.</p>
+<p><b>L'effet facteur</b> est ce que le changement de ratio produit sur les dépenses de l'année 2 : dépense de l'année 2 × (ratio de l'année 2 − ratio de l'année 1).</p>
+<p>Dans l'effet volume, il reste à distinguer trois choses : des quantités réellement achetées en plus, des <b>prix</b> plus élevés, ou un <b>reclassement</b>. Une dépense qui change de code d'achat change de ratio : elle disparaît d'une famille et apparaît dans une autre, sans qu'aucun achat n'ait changé.</p>
+<table class="tbl"><tr><th>Donnée utilisée</th><th>Ce qu'elle voit</th></tr>
+<tr><td>Dépenses × ratio monétaire</td><td>Les montants. Aveugle au fournisseur et sensible aux prix.</td></tr>
+<tr><td>Quantités × facteur moyen</td><td>Les volumes physiques. Insensible aux prix.</td></tr>
+<tr><td>Données du fournisseur</td><td>Ses émissions réelles. La plus fidèle, la plus coûteuse à obtenir.</td></tr></table>`; },
+  pre: [
+    ["Pourquoi un ratio change-t-il d'une année à l'autre ?", "Parce que la base de facteurs est mise à jour : nouvelles statistiques, nouvelle année de référence pour les euros, nouvelle méthode. L'ADEME a remplacé ses ratios monétaires en 2025 ; celui des télécommunications est ainsi passé de 170 à 136 kgCO₂e/k€. Le monde réel n'a pas changé ce jour-là : c'est l'instrument de mesure qui a changé."],
+    ["Recalculer les années passées", "Quand la méthode ou les facteurs changent de façon significative, le GHG Protocol demande de recalculer les années de comparaison avec la nouvelle méthode. C'est ce que fait un rapport lorsqu'il « retraite » un chiffre déjà publié. Le rapport 2025 de Worldline a ainsi retraité les déplacements professionnels de 2024, de 1 409 à 2 454 t."],
+    ["Euros constants : retirer l'inflation", "Si les prix ont monté de 5 %, une dépense de 105 achète ce que 100 achetait avant. Pour comparer des volumes, on divise la dépense de l'année par 1,05. On parle alors d'euros constants."]
+  ],
+  formula: ["Écart d'émissions", "Effet volume + Effet facteur"],
+  example: `Effet volume : (8 000 − 6 000) × 170 = <b>+${f(2000 * 170 / 1000)} t</b>. Effet facteur : 8 000 × (136 − 170) = <b>${f(8000 * (136 - 170) / 1000)} t</b>. Écart : <b>+${f((8000 * 136 - 6000 * 170) / 1000)} t</b>, soit 1 088 − 1 020.`,
+  limits: ["Il existe plusieurs conventions de décomposition. Celle-ci attribue le changement de ratio aux dépenses de la dernière année ; d'autres répartissent un peu autrement, pour le même total.", "L'effet volume mélange encore les quantités réelles et les prix : il faut des euros constants pour les séparer.", "Un reclassement de code d'achat ressemble à une variation, alors que rien n'a été acheté en plus ou en moins.", "Avec une incertitude de l'ordre de 80 % sur un ratio, un écart de quelques pour cent n'est pas une tendance."],
+  bridges: [["m12", "La décomposition part du calcul par les dépenses : dépense × ratio."], ["m8", "Comme pour le décret tertiaire, tout dépend de la base à laquelle on compare."], ["m10", "Décider d'une action suppose de savoir si la baisse observée est réelle."]],
+  proof: {
+    explain: { q: "Un responsable te demande pourquoi les émissions d'achats ont augmenté. Explique comment tu procèdes avant de conclure.", model: "Je décompose l'écart. Une émission calculée est une dépense multipliée par un ratio : je regarde donc d'abord si le ratio a changé entre les deux périodes, puis si les dépenses ont changé. L'effet volume est l'écart de dépenses multiplié par l'ancien ratio ; l'effet facteur est le changement de ratio appliqué aux dépenses de l'année. Dans l'effet volume, je vérifie ensuite ce qui vient des prix et ce qui vient d'un reclassement de code d'achat. Je ne parle de hausse réelle qu'après ces vérifications.",
+      keys: ["Une émission calculée = donnée d'activité × facteur", "Séparer l'effet volume et l'effet facteur", "Dans le volume : distinguer quantités, prix et reclassements", "Ne conclure à une hausse réelle qu'après ces contrôles"] },
+    apply: [
+      { q: "Les dépenses d'une famille restent à 1 000 k€, mais le ratio passe de 170 à 136 kgCO₂e/k€ après une mise à jour de la base. Les émissions calculées baissent de 34 t. Que peut-on annoncer ?", o: [["Rien sur le réel : c'est un effet de facteur", 1, "", "1 000 × (136 − 170) = −34 t, sans aucun changement d'achat. Il faut recalculer l'année précédente avec le nouveau ratio pour comparer."], ["Une baisse de 20 % des émissions d'achats", 0, "s3var", "Le chiffre baisse de 20 %, mais les achats sont identiques. Seul l'instrument de mesure a changé."], ["Une hausse cachée des volumes", 0, "s3var", "Les dépenses sont stables : il n'y a pas d'effet volume ici."]] },
+      { q: "Une ligne « maintenance de logiciels » passe du code « télécommunications » (136 kgCO₂e/k€) au code « conseil informatique » (75 kgCO₂e/k€). La dépense reste de 500 k€. L'écart d'émissions est de…", o: [["−30,5 t, dû au seul reclassement", 1, "", "500 × (75 − 136) = −30 500 kgCO₂e. Aucune prestation n'a changé : seule l'étiquette a changé."], ["0 t : la dépense est la même", 0, "s3var", "La dépense est la même, mais pas le ratio appliqué : le résultat change."], ["−61 t", 0, "spend", "61 est l'écart entre les deux ratios, en kg par millier d'euros. Il faut le multiplier par 500 k€, puis passer en tonnes."]] }
+    ] } },
+
+{ id: "m14", track: "s3", title: "L'amont de l'énergie", sub: "Catégorie 3 : ce que le litre a émis avant d'arriver", dom: ["comb", "elec", "compta"],
+  entry: ["Bon de livraison, diesel", ["Quantité livrée", "1 800 L"], ["Facteur complet de l'ADEME", "3,10 kgCO₂e/L"]],
+  ask: "Brûler un litre de gazole émet 2,49 kg de CO₂e. D'où viennent les 0,61 kg restants, et où les range-t-on ?",
+  body: function () { return `
+<p>Avant d'être brûlé dans le groupe électrogène, le gazole a été extrait, raffiné et transporté. Chaque étape a émis des gaz à effet de serre. C'est <b>l'amont</b> du combustible.</p>
+${fig([{ t: "Amont", s: "0,61 kg/L" }, { t: "Combustion", s: "2,49 kg/L" }, { t: "Total", s: "3,10 kg/L", k: 1 }], { alt: "Amont plus combustion égale facteur complet", cap: "L'amont va en scope 3, catégorie 3. La combustion va en scope 1. Le facteur complet de l'ADEME additionne les deux." })}
+<p>La même logique vaut pour toutes les énergies des scopes 1 et 2 :</p>
+<ul><li><b>Combustibles</b> : extraction, raffinage et transport vont en catégorie 3.</li>
+<li><b>Électricité</b> : l'amont des combustibles des centrales et la construction des installations vont en catégorie 3, ainsi que les <b>pertes en ligne</b>, c'est-à-dire l'électricité dissipée dans les câbles entre la centrale et le compteur.</li></ul>
+<p>Pour l'électricité française de 2023, l'ADEME distingue 0,039 kgCO₂e/kWh pour la combustion en centrale, 0,013 pour l'amont, et une part pour le transport et la distribution. Le repère de 0,052 utilisé dans la notion 7 est, lui, un facteur complet, toutes parts comprises. Au sens strict du GHG Protocol, seule la production en centrale relève du scope 2 : l'amont et les pertes vont en catégorie 3.</p>
+<p>Conséquence pratique : un même volume de gazole apparaît deux fois dans le bilan, avec deux facteurs, dans deux scopes. Ce n'est pas un double compte : les deux morceaux se complètent.</p>
+<p>Chez Worldline, la catégorie 3 pèse 3 188 t en 2025. D'après le rapport, elle se calcule à partir des consommations des scopes 1 et 2, multipliées par des facteurs d'amont propres à chaque pays, issus d'UL360.</p>`; },
+  pre: [
+    ["Pourquoi séparer amont et combustion ?", "Parce que les scopes suivent le lieu de l'émission. La combustion a lieu dans l'équipement de l'entreprise : scope 1. L'extraction et le raffinage ont lieu chez le pétrolier : scope 3. Un seul facteur « tout compris » mélangerait deux périmètres."],
+    ["Que sont les pertes en ligne ?", "Une partie de l'électricité injectée sur le réseau se dissipe en chaleur dans les câbles et les transformateurs. Pour livrer 100 kWh au compteur, les centrales doivent en produire un peu plus. Les émissions de ce supplément sont comptées par le consommateur en scope 3, catégorie 3."],
+    ["Et l'électricité renouvelable avec garanties d'origine ?", "En market-based, son scope 2 peut être nul. Mais fabriquer les panneaux ou les éoliennes a émis, et les pertes en ligne existent toujours : une part d'amont demeure en général en catégorie 3."]
+  ],
+  formula: ["Amont (kgCO₂e)", "Quantité consommée × Facteur d'amont"],
+  example: `1 800 L de gazole. Scope 1 : 1 800 × 2,49 = <b>${f(1800 * R.gazoleComb)} kgCO₂e</b>. Scope 3, catégorie 3 : 1 800 × 0,61 = <b>${f(1800 * R.gazoleAmont)} kgCO₂e</b>. Total : ${f(1800 * R.feGazole)} kgCO₂e, soit 1 800 × 3,10.`,
+  limits: ["Les facteurs d'amont varient selon l'origine du combustible : le gaz importé par bateau a un amont plus lourd que le gaz arrivé par gazoduc.", "Selon l'outil, le facteur affiché est « combustion seule » ou « amont compris » : vérifie toujours lequel avant de l'appliquer.", "La catégorie 3 dépend entièrement des données des scopes 1 et 2 : une erreur de litres se retrouve dans les deux."],
+  bridges: [["m5", "Le facteur de 3,10 kgCO₂e par litre vu dans cette notion est un facteur complet : amont et combustion."], ["m7", "Le facteur d'un mix électrique contient lui aussi une part de combustion et une part d'amont."], ["m11", "L'amont est l'exemple le plus simple d'une émission qui a lieu chez un autre, à cause de nous."]],
+  proof: {
+    explain: { q: "Explique pourquoi un litre de gazole consommé par un groupe électrogène apparaît à la fois en scope 1 et en scope 3.", model: "Brûler le litre dans notre groupe émet 2,49 kgCO₂e : c'est du scope 1, car la combustion a lieu dans notre équipement. Mais avant d'arriver, ce litre a été extrait, raffiné et transporté, ce qui a émis 0,61 kgCO₂e chez d'autres : c'est du scope 3, catégorie 3. Les deux parts s'additionnent pour donner le facteur complet de 3,10 kgCO₂e par litre. Ce n'est pas un double compte : ce sont deux morceaux distincts de la même chaîne.",
+      keys: ["La combustion a lieu chez nous : scope 1 (2,49 kg par litre)", "L'amont a lieu chez d'autres : scope 3, catégorie 3 (0,61 kg par litre)", "Les deux s'additionnent : 3,10 kg par litre", "Ce n'est pas un double compte"] },
+    apply: [
+      { q: "Un site consomme 100 000 kWh PCS de gaz naturel. Facteurs : 0,181 kgCO₂e/kWh pour la combustion, 0,034 pour l'amont. Que reporte-t-on ?", o: [["18,1 t en scope 1 et 3,4 t en catégorie 3", 1, "", "100 000 × 0,181 = 18 100 kg. 100 000 × 0,034 = 3 400 kg. Total : 21,5 t."], ["21,5 t en scope 1", 0, "amont", "21,5 t est le total. La part d'amont (3,4 t) n'est pas émise sur le site : elle va en scope 3."], ["21,5 t en scope 1 et 3,4 t en catégorie 3", 0, "amont", "L'amont serait compté deux fois : une fois dans le facteur complet, une fois à part."]] },
+      { q: "Une entreprise achète 100 % d'électricité renouvelable avec garanties d'origine. Son scope 2 market-based est nul. Sa catégorie 3 liée à l'électricité est…", o: [["en général non nulle", 1, "", "La fabrication des installations et les pertes en ligne restent à compter."], ["nulle elle aussi", 0, "amont", "Un scope 2 nul ne dit rien de l'amont : les installations et les pertes en ligne ont émis."], ["égale à son scope 2 location-based", 0, "amont", "Le location-based mesure la production moyenne du réseau, pas son amont."]] }
+    ] } },
+
+{ id: "m15", track: "s3", title: "Les déplacements", sub: "Catégories 6 et 7 : missions et trajets quotidiens", dom: ["trans", "clim", "compta"],
+  entry: ["Note de frais, mission à Madrid", ["Vol Paris – Madrid, aller-retour", "2 100 km"], ["Taxi sur place", "60 €"], ["Hôtel", "2 nuits"]],
+  ask: "Aucun véhicule de l'entreprise n'a roulé ni volé. Pourquoi ce déplacement entre-t-il dans son bilan, et comment le chiffrer ?",
+  body: function () { return `
+<p>Trois situations, trois rangements :</p>
+<table class="tbl"><tr><th>Situation</th><th>Où va l'émission</th></tr>
+<tr><td>Voiture de la flotte, possédée ou contrôlée par l'entreprise</td><td>Scope 1 : le carburant brûle dans son véhicule</td></tr>
+<tr><td>Mission en avion, train, taxi, voiture de location ou voiture personnelle</td><td>Scope 3, catégorie 6</td></tr>
+<tr><td>Trajet quotidien entre le domicile et le bureau</td><td>Scope 3, catégorie 7</td></tr></table>
+<p>Le calcul de base : une <b>distance</b> multipliée par le <b>facteur du mode</b> de transport.</p>
+${fig([{ t: "Distance", s: "2 100 km" }, { t: "× Facteur", s: "0,178 kg/km" }, { t: "Émissions", s: "374 kgCO₂e", k: 1 }], { alt: "Distance fois facteur du mode égale émissions", cap: "Un aller-retour Paris – Madrid en avion moyen-courrier, pour un voyageur." })}
+${bars([["Avion court-courrier", 230], ["Voiture thermique, seul", 200], ["Avion moyen-courrier", 178], ["Avion long-courrier", 152], ["Train à grande vitesse", 2.9]], "g/km")}
+<p class="hint">En grammes de CO₂e par passager et par kilomètre. Avions : traînées de condensation comprises.</p>
+<p><b>Les traînées.</b> En altitude, les avions laissent des traînées de condensation qui réchauffent elles aussi le climat. Les compter multiplie le facteur par 1,8 environ. Certains référentiels les incluent, d'autres non : l'écart entre deux bilans vient souvent de là.</p>
+<p><b>Quand les kilomètres manquent.</b> L'outil de notes de frais ne donne parfois qu'un montant. On reconstitue alors une distance : montant ÷ prix moyen au kilomètre, puis × facteur. D'après le rapport de durabilité 2025, Worldline procède ainsi pour les taxis, avec 0,20 kg par km.</p>
+<p><b>Domicile-travail.</b> Même calcul, répété : distance aller-retour × jours sur site × facteur du mode. Worldline l'estime à partir d'une enquête auprès des salariés. Résultat : 13 562 t en 2025, plus de cinq fois les déplacements professionnels (2 416 t).</p>`; },
+  pre: [
+    ["Passager-kilomètre : l'unité des transports partagés", "Un avion émet pour tous ses passagers à la fois. On divise donc ses émissions par le nombre de passagers et par la distance : on obtient des kgCO₂e par passager et par kilomètre. Deux collègues sur le même vol comptent deux fois la distance."],
+    ["Pourquoi le court-courrier émet-il plus au kilomètre ?", "Le décollage et la montée consomment beaucoup de carburant. Sur un vol court, cette phase pèse lourd dans le total. Sur un vol long, elle est diluée dans des milliers de kilomètres de croisière."],
+    ["D'où vient le repère de 0,20 kgCO₂e par km pour une voiture ?", "De la notion 9. Une voiture qui consomme 6,5 L aux 100 km brûle 0,065 L par km. À 3,10 kgCO₂e le litre, cela fait 0,20 kgCO₂e par km. À deux dans la voiture, c'est 0,10 par personne."],
+    ["Et les nuits d'hôtel ?", "Le GHG Protocol les laisse en option dans la catégorie 6. Quand on les compte sans donnée physique, on passe par les dépenses : montant × ratio monétaire de l'hébergement."]
+  ],
+  formula: ["Émissions (kgCO₂e)", "Distance (km) × Voyageurs × Facteur du mode (kgCO₂e par passager.km)"],
+  example: `Paris – Madrid aller-retour, 2 100 km en avion moyen-courrier : 2 100 × 0,178 = <b>${f(2100 * 0.178, 0)} kgCO₂e</b>. Le même trajet en train à grande vitesse : 2 100 × 0,0029 = <b>${f(2100 * R.tgv, 0)} kgCO₂e</b>.`,
+  limits: ["Le facteur d'un vol dépend de la taille de l'avion, de son remplissage et de la classe : un siège en classe affaires occupe plus de place, donc porte plus d'émissions.", "Le facteur du train dépend du mix électrique du pays : 0,0029 vaut pour un train à grande vitesse en France.", "Compter ou non les traînées change le résultat d'un facteur 1,8 : deux bilans ne se comparent que s'ils font le même choix.", "Une distance reconstituée à partir d'un montant dépend du prix au kilomètre retenu : c'est une estimation, pas une mesure."],
+  bridges: [["m9", "La flotte de véhicules se calcule avec les litres réels : c'est du scope 1, pas de la catégorie 6."], ["m12", "Sans distance ni carburant, il reste la méthode par les dépenses."], ["m7", "Le train et la voiture électrique dépendent du mix électrique du pays traversé."]],
+  proof: {
+    explain: { q: "Un collègue confond voiture de fonction, mission en train et trajet domicile-travail. Explique où va chacun dans le bilan.", model: "Le carburant d'une voiture que l'entreprise possède ou contrôle est du scope 1 : la combustion a lieu dans son véhicule. Une mission en train, en avion ou en taxi se fait dans le véhicule d'un autre : c'est du scope 3, catégorie 6, calculé par la distance multipliée par le facteur du mode. Le trajet quotidien entre le domicile et le bureau est du scope 3, catégorie 7. Dans les trois cas, le calcul part d'une distance ou d'un volume de carburant.",
+      keys: ["Flotte possédée ou contrôlée : scope 1", "Mission dans le véhicule d'un tiers : scope 3, catégorie 6", "Domicile-travail : scope 3, catégorie 7", "Calcul : distance × facteur du mode, ou carburant réel"] },
+    apply: [
+      { q: "Une salariée fait 25 km aller-retour en voiture thermique, seule, 200 jours par an. Avec 0,20 kgCO₂e par km, ses trajets entre le domicile et le bureau pèsent…", o: [["1 t de CO₂e par an, en catégorie 7", 1, "", "25 × 200 × 0,20 = 1 000 kgCO₂e."], ["1 t de CO₂e par an, en catégorie 6", 0, "s3trav", "Le calcul est juste, mais le trajet quotidien vers le bureau n'est pas une mission : catégorie 7."], ["5 kgCO₂e par an", 0, "s3trav", "5 kg, c'est une seule journée. Multiplie par les 200 jours."]] },
+      { q: "Un taxi coûte 60 €. Le prix moyen est de 2 € par km et le facteur de 0,20 kgCO₂e par km. Les émissions estimées sont de…", o: [["6 kgCO₂e", 1, "", "60 ÷ 2 = 30 km reconstitués. 30 × 0,20 = 6 kgCO₂e."], ["12 kgCO₂e", 0, "s3trav", "Tu as multiplié le montant par le facteur. Il faut d'abord retrouver la distance : montant ÷ prix au km."], ["24 kgCO₂e", 0, "s3trav", "Tu as multiplié par le prix au km au lieu de diviser."]] }
+    ] } },
+
+{ id: "m16", track: "s3", title: "Les actifs loués", sub: "Catégories 8 et 13 : qui tient le compteur ?", dom: ["bat", "compta", "pol"],
+  entry: ["Bail de bureaux", ["Surface louée", "2 000 m²"], ["Énergie", "Gérée par le bailleur, refacturée dans les charges"]],
+  ask: "L'entreprise occupe ces bureaux mais ne tient aucun contrat d'énergie. Où vont les émissions du chauffage et de l'électricité ?",
+  body: function () { return `
+<p>Un bail met face à face deux parties : le <b>bailleur</b>, qui possède l'actif, et le <b>preneur</b>, qui le loue. L'énergie consommée dans l'actif émet une seule fois, mais chacun des deux doit la compter. La question est : dans quel scope ?</p>
+<p>Le critère est le <b>contrôle opérationnel</b> : qui exploite l'actif au quotidien, tient les contrats d'énergie et règle les équipements ?</p>
+${fig([{ t: "Bailleur", s: "possède" }, { t: "Exploitant", s: "scopes 1 et 2", k: 1 }, { t: "Preneur", s: "occupe" }], { alt: "Bailleur, exploitant, preneur", cap: "L'exploitant est soit le bailleur, soit le preneur. Lui compte l'énergie en scopes 1 et 2. L'autre la compte en scope 3 : catégorie 8 pour le preneur, catégorie 13 pour le bailleur." })}
+<table class="tbl"><tr><th>Qui exploite ?</th><th>Pour le preneur</th><th>Pour le bailleur</th></tr>
+<tr><td>Le preneur</td><td>Scopes 1 et 2</td><td>Scope 3, catégorie 13</td></tr>
+<tr><td>Le bailleur</td><td>Scope 3, catégorie 8</td><td>Scopes 1 et 2</td></tr></table>
+<p><b>Le calcul</b> ne dépend pas du bail. Si les consommations réelles sont connues : kWh × facteur, comme pour un site en propre. Sinon, on estime : surface × consommation moyenne par m² × facteur. À défaut encore : loyers et charges × ratio monétaire.</p>
+<p>Chez Worldline, la catégorie 8 pèse 27 134 t en 2025. D'après le rapport, elle porte surtout sur la location et le fonctionnement de bureaux et de voitures de société, et se calcule par les dépenses, comme la catégorie 1. Le carburant des voitures thermiques de la flotte reste, lui, en scope 1.</p>`; },
+  pre: [
+    ["Bailleur, preneur : les mots du bail", "Le bailleur possède l'actif et le donne en location. Le preneur le loue et l'utilise. En anglais : lessor et lessee. « Upstream leased assets » (catégorie 8) se lit du point de vue du preneur. « Downstream leased assets » (catégorie 13) se lit du point de vue du bailleur."],
+    ["Contrôle opérationnel, contrôle financier", "Ce sont deux façons de tracer le périmètre d'un bilan. En contrôle opérationnel, l'entreprise compte en scopes 1 et 2 ce qu'elle exploite, qu'elle en soit propriétaire ou non. En contrôle financier, elle compte ce dont elle porte les risques et les bénéfices économiques. Le choix se fait une fois, pour tout le bilan, et il est publié."],
+    ["Des m² aux kWh", "Quand le compteur n'est pas accessible, on multiplie la surface par une consommation moyenne par m² : c'est l'intensité énergétique de la notion 8. Le résultat est une estimation, à remplacer par le relevé réel dès qu'il est disponible."]
+  ],
+  formula: ["Émissions estimées (kgCO₂e)", "Surface (m²) × Intensité (kWh/m²) × Facteur (kgCO₂e/kWh)"],
+  example: `2 000 m² loués, en supposant 150 kWh d'électricité par m² et par an : ${f(2000 * 150)} kWh. En France : × 0,052 = <b>${f(2000 * 150 * R.feElecFR / 1000)} tCO₂e</b>. Avec le facteur moyen de l'Union européenne (0,21) : <b>${f(2000 * 150 * R.feElecUE / 1000)} tCO₂e</b>.`,
+  limits: ["Le classement dépend de l'approche de consolidation de l'entreprise : en contrôle financier, une location simple renvoie les émissions en catégorie 8, même si le locataire règle lui-même le chauffage.", "Une estimation par les m² ignore l'état réel du bâtiment : deux immeubles de même surface peuvent consommer du simple au triple.", "Bailleur et preneur comptent chacun les mêmes émissions, dans des scopes différents : c'est normal, leurs bilans ne s'additionnent pas.", "Une salle louée dans un centre de données en colocation suit la même logique, mais le classement retenu varie d'une entreprise à l'autre."],
+  bridges: [["m8", "L'intensité d'un bâtiment, en kWh par m², sert ici à estimer une consommation qu'on ne mesure pas."], ["m7", "Le pays du bâtiment fixe le facteur de l'électricité : le même bureau pèse quatre fois plus dans l'Union européenne qu'en France."], ["m11", "Les actifs loués montrent que le scope dépend de qui tient la source, pas de qui occupe les lieux."]],
+  proof: {
+    explain: { q: "Explique à un gestionnaire d'immeubles pourquoi l'énergie d'un bureau loué peut aller en scope 2 ou en scope 3 selon le bail.", model: "Tout dépend de qui exploite le bâtiment. Si nous tenons le contrat d'électricité et réglons les équipements, nous avons le contrôle opérationnel : l'énergie va dans nos scopes 1 et 2, comme pour un site en propre. Si le bailleur exploite l'immeuble et nous refacture l'énergie dans les charges, c'est lui qui la compte en scopes 1 et 2 ; nous la comptons en scope 3, catégorie 8. Dans les deux cas le calcul est le même : des kWh multipliés par un facteur, ou une estimation par la surface si le relevé manque.",
+      keys: ["Le critère est le contrôle opérationnel : qui exploite l'actif", "Nous exploitons : scopes 1 et 2", "Le bailleur exploite : scope 3, catégorie 8 pour nous", "Le calcul reste kWh × facteur, ou une estimation par les m²"] },
+    apply: [
+      { q: "Une entreprise possède un étage de bureaux qu'elle loue à une autre société. Cette société tient son propre contrat d'électricité. Pour l'entreprise propriétaire, ces émissions relèvent…", o: [["du scope 3, catégorie 13", 1, "", "Elle est bailleur et n'exploite pas l'actif : actifs loués en aval."], ["du scope 3, catégorie 8", 0, "s3lease", "La catégorie 8 concerne ce que l'entreprise loue en tant que preneur. Ici, elle est bailleur."], ["du scope 2", 0, "s3lease", "Elle n'achète pas cette électricité et n'exploite pas les locaux."]] },
+      { q: "Un bureau loué de 1 000 m² n'a pas de compteur accessible. On estime 200 kWh par m² et par an, sur un réseau à 0,35 kgCO₂e/kWh. Les émissions estimées sont de…", o: [["70 tCO₂e", 1, "", "1 000 × 200 = 200 000 kWh. 200 000 × 0,35 = 70 000 kgCO₂e."], ["200 tCO₂e", 0, "s3lease", "200 000 est le nombre de kWh. Il reste à appliquer le facteur d'émission."], ["0,07 tCO₂e", 0, "fe", "0,07 t est le résultat pour un seul m². Multiplie par la surface."]] }
+    ] } },
+
+{ id: "m17", track: "s3", title: "L'usage des produits vendus", sub: "Catégories 11 et 12 : toute une vie, comptée l'année de la vente", dom: ["prod", "elec", "compta"],
+  entry: ["Ventes de l'année", ["Terminaux de paiement vendus", "100 000"], ["Puissance moyenne en service", "5 W"], ["Durée de vie prévue", "5 ans"]],
+  ask: "Ces terminaux consommeront de l'électricité chez les commerçants pendant cinq ans. Qui compte ces émissions, et quand ?",
+  body: function () { return `
+<p>Un produit qui consomme de l'énergie émet pendant toute sa vie, chez le client. Pour le client, c'est du scope 2. Pour l'entreprise qui l'a vendu, c'est du scope 3, <b>catégorie 11</b> : l'usage des produits vendus.</p>
+<p>La règle de temps surprend : on compte, <b>l'année de la vente</b>, les émissions de <b>toute la durée de vie</b> des produits vendus cette année-là.</p>
+${fig([{ t: "Puissance", s: "5 W" }, { t: "× Durée", s: "5 ans" }, { t: "Énergie", s: "219 kWh", k: 1 }], { alt: "Puissance fois durée de vie égale énergie", cap: "Un terminal de 5 W allumé en continu pendant cinq ans consomme 219 kWh. C'est la notion 1, étendue à toute une vie." })}
+<p>Il reste à multiplier par le nombre d'unités vendues, puis par le facteur d'émission du pays où le produit est utilisé.</p>
+<p><b>La fin de vie</b> suit la même règle : la collecte et le traitement des produits vendus dans l'année, quand ils seront jetés, vont en catégorie 12, dès l'année de la vente.</p>
+<p>Chez Worldline, la catégorie 11 pèse 101 093 t en 2025, soit 32 % du scope 3. D'après le rapport, le calcul part d'une analyse de cycle de vie d'une <b>transaction de paiement</b> (carte, terminal, centres de données, ticket), multipliée par les volumes de transactions. L'unité d'usage est alors la transaction, et non le terminal : environ 2,45 g de CO₂e pour un paiement en magasin.</p>`; },
+  pre: [
+    ["Watts, heures, années : retrouver l'énergie d'une vie", "Énergie = puissance × durée. Une année compte 8 760 heures. Un appareil de 5 W, soit 0,005 kW, consomme 0,005 × 8 760 = 43,8 kWh par an s'il reste allumé en continu."],
+    ["Pourquoi tout compter l'année de la vente ?", "Parce que c'est l'année où l'entreprise prend la décision qui engage ces émissions : mettre le produit sur le marché. Si l'on attendait qu'elles se produisent, le bilan d'une année mélangerait les ventes de plusieurs années, et l'effet d'un produit mieux conçu n'apparaîtrait que très lentement."],
+    ["Des grammes aux tonnes", "Un gramme par transaction paraît négligeable. Mais un milliard de grammes font 1 000 tonnes. Pour passer des grammes aux tonnes, on divise par un million."]
+  ],
+  formula: ["Émissions d'usage (kgCO₂e)", "Unités vendues × Énergie sur la durée de vie (kWh) × Facteur (kgCO₂e/kWh)"],
+  example: `100 000 terminaux × 219 kWh = 21,9 millions de kWh. Avec le facteur moyen de l'Union européenne (0,21) : <b>${f(100000 * 219 * R.feElecUE / 1000, 0)} tCO₂e</b>, comptées en totalité l'année de la vente.`,
+  limits: ["La durée de vie et le profil d'usage sont des hypothèses : passer de 5 à 7 ans augmente le résultat de 40 %, sans rien changer au produit.", "Le facteur dépend du pays d'usage, et du mix électrique des années à venir, qu'on ne connaît pas.", "Allonger la durée de vie d'un produit alourdit sa catégorie 11, mais évite d'en fabriquer un autre : un bon choix peut dégrader un indicateur.", "Worldline raisonne par transaction, à partir d'une analyse de cycle de vie : les deux approches ne donnent pas le même chiffre."],
+  bridges: [["m1", "Puissance × durée : le calcul de la notion 1, appliqué à toute la vie d'un produit."], ["m7", "Le pays d'usage fixe le facteur : le même terminal pèse près de neuf fois plus avec le mix mondial qu'en France."], ["m12", "Acheter les terminaux relève de la catégorie 1. Leur usage chez le client relève de la catégorie 11."]],
+  proof: {
+    explain: { q: "Explique pourquoi les émissions d'un terminal utilisé cinq ans chez un commerçant figurent dans le bilan de l'entreprise qui l'a vendu, et à quelle date.", model: "Le terminal consomme de l'électricité chez le commerçant pendant toute sa vie. Pour le commerçant, c'est du scope 2. Pour l'entreprise qui l'a vendu, c'est du scope 3, catégorie 11 : usage des produits vendus. On compte en une fois, l'année de la vente, les émissions de toute la durée de vie : nombre de terminaux, multiplié par l'énergie consommée sur la durée de vie, multiplié par le facteur du pays d'usage. Le résultat repose sur des hypothèses de durée de vie et d'usage, qu'il faut publier.",
+      keys: ["Le produit émet chez le client : scope 2 du client, scope 3 catégorie 11 du vendeur", "Toute la durée de vie est comptée l'année de la vente", "Unités × énergie sur la durée de vie × facteur", "Le résultat dépend d'hypothèses de durée de vie et d'usage"] },
+    apply: [
+      { q: "Un paiement en magasin pèse environ 2,45 g de CO₂e sur son cycle de vie. Combien pèse un milliard de paiements ?", o: [["2 450 tCO₂e", 1, "", "1 milliard × 2,45 g = 2,45 milliards de grammes, soit 2 450 000 kg, soit 2 450 t."], ["2,45 tCO₂e", 0, "fe", "Il manque un facteur 1 000 : un milliard de grammes font 1 000 tonnes."], ["2 450 000 tCO₂e", 0, "fe", "C'est le résultat en kilogrammes, pas en tonnes."]] },
+      { q: "Une entreprise vend 10 000 terminaux en 2026. Chacun consommera 40 kWh par an pendant 5 ans. Quelle énergie d'usage entre dans la catégorie 11 du bilan 2026 ?", o: [["2 000 000 kWh", 1, "", "10 000 × 40 × 5 = 2 000 000 kWh : toute la durée de vie, dès l'année de la vente."], ["400 000 kWh", 0, "s3use", "C'est la consommation d'une seule année. La catégorie 11 compte toute la durée de vie."], ["Aucune : c'est le scope 2 des clients", 0, "s3use", "C'est bien le scope 2 des clients, et c'est aussi le scope 3 du vendeur : la même émission figure dans les deux bilans."]] }
+    ] } }
+];
+S3.forEach(function (m) { WL.MODS.push(m); });
+WL.MOD = {}; WL.MODS.forEach(function (m, i) { m.n = i + 1; WL.MOD[m.id] = m; });
+
+/* ---------- simulateurs ---------- */
+var ELEC = [["France", R.feElecFR], ["UE", R.feElecUE], ["États-Unis", R.feElecUS], ["Monde", R.feElecMonde]];
+var L = WL.LABS;
+
+L.m11 = { title: "Le poids du scope 3", law: "La part du scope 3 dépend de ce que l'entreprise achète et vend, bien plus que de ce qu'elle brûle. Dès 40 % du total, les critères SBTi exigent un objectif.",
+  params: [{ k: "a", l: "Scope 1", u: "t", min: 0, max: 20000, step: 100, def: 5700 }, { k: "b", l: "Scope 2", u: "t", min: 0, max: 20000, step: 100, def: 2500 }, { k: "c", l: "Scope 3", u: "t", min: 0, max: 400000, step: 1000, def: 320000 }],
+  calc: function (p) { var t = p.a + p.b + p.c, s = t ? p.c / t * 100 : 0;
+    return { main: s, rows: [row("Part du scope 3", s, "%", 1), row("Total des trois scopes", t, "tCO₂e"), row("Scope 3 rapporté aux scopes 1 et 2", (p.a + p.b) ? p.c / (p.a + p.b) : 0, "fois"), row("Couverture minimale d'un objectif SBTi (67 %)", p.c * 0.67, "tCO₂e")],
+      bars: [{ l: "Scope 1", v: p.a, u: "t" }, { l: "Scope 2", v: p.b, u: "t" }, { l: "Scope 3", v: p.c, u: "t", c: "r" }],
+      note: s >= 40 ? "Le scope 3 atteint 40 % du total : un objectif de réduction est requis par les critères SBTi." : "Le scope 3 reste sous 40 % du total : les critères SBTi n'exigent pas d'objectif, mais le recommandent." }; },
+  predicts: [
+    { q: "Worldline, ordres de grandeur 2025 : 5 700 t en scope 1, 2 500 t en scope 2, 320 000 t en scope 3. Le scope 3 pèse…", o: ["environ 98 % du total", "environ 80 % du total", "environ 39 % du total"], a: 0, tag: "s3rep",
+      why: "320 000 ÷ 328 200 = 97,5 %. Le scope 3 vaut 39 fois les scopes 1 et 2 réunis : c'est ce rapport, et non sa part, qui vaut 39.", set: { a: 5700, b: 2500, c: 320000 } },
+    { q: "Une entreprise industrielle émet 12 000 t en scope 1, 8 000 t en scope 2 et 10 000 t en scope 3. Les critères SBTi exigent-ils un objectif sur son scope 3 ?", o: ["Non : il pèse un tiers du total, sous le seuil de 40 %", "Oui : tout scope 3 exige un objectif", "Oui : il dépasse 10 000 t"], a: 0, tag: "pct",
+      why: "10 000 ÷ 30 000 = 33 %. Le seuil est une part du total, pas un tonnage.", set: { a: 12000, b: 8000, c: 10000 } }
+  ] };
+
+L.m12 = { title: "Des euros aux tonnes", law: "Les émissions calculées sont proportionnelles à la dépense et au ratio. Une hausse des prix les fait monter d'autant, sans aucun changement physique.",
+  params: [{ k: "r", l: "Famille d'achat", type: "sel", opts: [["Conseil informatique", R.ratio.it], ["Télécoms", R.ratio.telecom], ["Hôtels, restauration", R.ratio.hotel], ["Services financiers", R.ratio.fin], ["Produits métalliques", R.ratio.metal]], def: 0 },
+    { k: "d", l: "Dépense de l'année", u: "k€", min: 50, max: 5000, step: 10, def: 600 }, { k: "inf", l: "Hausse des prix depuis l'année du ratio", u: "%", min: 0, max: 30, step: 1, def: 0 }],
+  calc: function (p) { var e = p.d * p.r / 1000, c = p.d / (1 + p.inf / 100) * p.r / 1000;
+    return { main: e, rows: [row("Émissions calculées", e, "tCO₂e", 1), row("À prix constants", c, "tCO₂e"), row("Part due à la seule hausse des prix", e - c, "tCO₂e"), row("Ratio appliqué", p.r, "kgCO₂e/k€")] }; },
+  predicts: [
+    { q: "600 k€ de conseil informatique, avec un ratio de 75 kgCO₂e/k€. Les émissions calculées sont de…", o: ["45 tCO₂e", "45 000 tCO₂e", "8 tCO₂e"], a: 0, tag: "spend",
+      why: "600 × 75 = 45 000 kgCO₂e, soit 45 tonnes. Le ratio s'applique aux milliers d'euros et donne des kilogrammes.", set: { r: 0, d: 600, inf: 0 } },
+    { q: "La même somme, 600 k€, dépensée en produits métalliques (317 kgCO₂e/k€) pèse…", o: ["environ 4 fois plus", "autant : la dépense est la même", "environ 40 fois plus"], a: 0, tag: "spend",
+      why: "317 ÷ 75 = 4,2 : 190 t au lieu de 45. À dépense égale, la famille d'achat change tout : c'est elle qu'il faut classer correctement.", set: { r: 4, d: 600, inf: 0 } },
+    { q: "Les prix ont monté de 10 % depuis l'année du ratio. L'entreprise achète exactement les mêmes prestations, payées 660 k€ au lieu de 600. Les émissions calculées…", o: ["augmentent de 10 %, sans changement réel", "ne changent pas", "baissent"], a: 0, tag: "s3var",
+      why: "660 × 75 = 49,5 t, contre 45 t. La méthode suit les euros. Pour comparer deux années, on raisonne à prix constants.", set: { r: 0, d: 660, inf: 10 } }
+  ] };
+
+L.m13 = { title: "Décomposer un écart", law: "L'écart total est la somme de l'effet volume et de l'effet facteur. Une hausse des dépenses peut être masquée par une baisse du ratio, et inversement.",
+  params: [{ k: "d0", l: "Dépense, année 1", u: "k€", min: 1000, max: 10000, step: 250, def: 6000 }, { k: "d1", l: "Dépense, année 2", u: "k€", min: 1000, max: 10000, step: 250, def: 8000 },
+    { k: "r0", l: "Ratio, année 1", u: "kg/k€", min: 50, max: 400, step: 1, def: 170 }, { k: "r1", l: "Ratio, année 2", u: "kg/k€", min: 50, max: 400, step: 1, def: 136 }],
+  calc: function (p) { var e0 = p.d0 * p.r0 / 1000, e1 = p.d1 * p.r1 / 1000, vol = (p.d1 - p.d0) * p.r0 / 1000, fac = p.d1 * (p.r1 - p.r0) / 1000;
+    return { main: e1, rows: [row("Émissions, année 2", e1, "tCO₂e", 1), row("Émissions, année 1", e0, "tCO₂e"), row("Écart", e1 - e0, "tCO₂e")],
+      bars: [{ l: "Effet volume", v: vol, u: "t", c: vol > 0 ? "r" : "g" }, { l: "Effet facteur", v: fac, u: "t", c: fac > 0 ? "r" : "g" }] }; },
+  predicts: [
+    { q: "Dépenses : 6 000 puis 8 000 k€. Ratio : 170 puis 136 kgCO₂e/k€. Les émissions calculées…", o: ["augmentent un peu : +68 t", "augmentent d'un tiers, comme les dépenses", "baissent de 20 %, comme le ratio"], a: 0, tag: "s3var",
+      why: "Année 1 : 6 000 × 170 = 1 020 t. Année 2 : 8 000 × 136 = 1 088 t. L'effet volume (+340 t) est presque effacé par l'effet facteur (−272 t).", set: { d0: 6000, d1: 8000, r0: 170, r1: 136 } },
+    { q: "On recalcule l'année 1 avec le nouveau ratio de 136, comme après tout changement de méthode. L'écart entre les deux années devient…", o: ["+272 t : la hausse liée aux dépenses", "+68 t, inchangé", "nul"], a: 0, tag: "s3var",
+      why: "Année 1 recalculée : 6 000 × 136 = 816 t. Année 2 : 1 088 t. À méthode constante, la hausse est de 272 t, soit +33 %, comme les dépenses.", set: { d0: 6000, d1: 8000, r0: 136, r1: 136 } }
+  ] };
+
+L.m14 = { title: "Un combustible, deux scopes", law: "La combustion et l'amont sont tous deux proportionnels à la quantité consommée. Leur rapport ne dépend que de l'énergie choisie.",
+  params: [{ k: "c", l: "Énergie", type: "sel", opts: [["Gazole (L)", [R.gazoleComb, R.gazoleAmont]], ["Gaz naturel (kWh PCS)", [R.gazComb, R.gazAmont]]], def: 0 }, { k: "q", l: "Quantité consommée", u: "unités", min: 500, max: 100000, step: 100, def: 1800 }],
+  calc: function (p) { var s1 = p.q * p.c[0], am = p.q * p.c[1];
+    return { main: am, rows: [row("Amont : scope 3, catégorie 3", am, "kgCO₂e", 1), row("Combustion : scope 1", s1, "kgCO₂e"), row("Total", s1 + am, "kgCO₂e"), row("Part de l'amont dans le total", am / (s1 + am) * 100, "%")],
+      bars: [{ l: "Combustion (scope 1)", v: s1 / 1000, u: "t", c: "r" }, { l: "Amont (scope 3)", v: am / 1000, u: "t" }] }; },
+  predicts: [
+    { q: "1 800 L de gazole sont brûlés dans un groupe électrogène. L'amont (0,61 kgCO₂e par litre) représente…", o: ["environ 1,1 t, en scope 3", "environ 5,6 t, en scope 3", "0 : tout est en scope 1"], a: 0, tag: "amont",
+      why: "1 800 × 0,61 = 1 098 kgCO₂e, en catégorie 3. La combustion (1 800 × 2,49 = 4 482 kg) va en scope 1. Les 5,6 t sont le total des deux.", set: { c: 0, q: 1800 } },
+    { q: "Quelle part du facteur complet d'un litre de gazole vient de l'amont ?", o: ["Environ 20 %", "Environ 2 %", "Environ 50 %"], a: 0, tag: "amont",
+      why: "0,61 ÷ 3,10 = 19,7 %. Oublier l'amont, c'est sous-estimer d'un cinquième l'empreinte du carburant.", set: { c: 0, q: 1000 } },
+    { q: "Pour le gaz naturel (0,181 kgCO₂e/kWh en combustion, 0,034 en amont), la part de l'amont est…", o: ["d'environ 16 %", "de 34 %", "négligeable"], a: 0, tag: "amont",
+      why: "0,034 ÷ 0,215 = 15,8 %. Chaque énergie a son propre rapport entre amont et combustion.", set: { c: 1, q: 100000 } }
+  ] };
+
+L.m15 = { title: "Un trajet, plusieurs modes", law: "Les émissions sont proportionnelles à la distance et au nombre de voyageurs. Le mode change tout : entre le train et l'avion, le facteur varie de 1 à 60 ou 80.",
+  params: [{ k: "m", l: "Mode", type: "sel", opts: [["Avion court", R.avion.court], ["Avion moyen", R.avion.moyen], ["Avion long", R.avion.long], ["Voiture, seul", [R.voiture, R.voiture]], ["Train", [R.tgv, R.tgv]]], def: 1 },
+    { k: "t", l: "Traînées de condensation (avion)", type: "sel", opts: [["Comptées", 0], ["Non comptées", 1]], def: 0 },
+    { k: "km", l: "Distance aller-retour", u: "km", min: 100, max: 20000, step: 100, def: 2100 }, { k: "n", l: "Voyageurs", u: "", min: 1, max: 50, step: 1, def: 1 }],
+  calc: function (p) { var fe = p.m[p.t], e = p.km * p.n * fe;
+    return { main: e, rows: [row("Émissions", e, "kgCO₂e", 1), row("Facteur appliqué", fe * 1000, "g par passager.km"), row("Le même trajet en train", p.km * p.n * R.tgv, "kgCO₂e")] }; },
+  predicts: [
+    { q: "Paris – Madrid aller-retour, 2 100 km en avion moyen-courrier (0,178 kgCO₂e par passager.km, traînées comptées). Pour un voyageur, les émissions sont d'environ…", o: ["374 kgCO₂e", "37 kgCO₂e", "3,7 tCO₂e"], a: 0, tag: "s3trav",
+      why: "2 100 × 0,178 = 374 kgCO₂e. Repère : un aller-retour européen en avion pèse quelques centaines de kilogrammes.", set: { m: 1, t: 0, km: 2100, n: 1 } },
+    { q: "Le même trajet en train à grande vitesse (0,0029 kgCO₂e par passager.km) émet…", o: ["environ 60 fois moins", "environ 2 fois moins", "à peu près autant"], a: 0, tag: "s3trav",
+      why: "2 100 × 0,0029 = 6 kgCO₂e, contre 374. Le rapport est de 0,178 ÷ 0,0029, soit environ 61.", set: { m: 4, t: 0, km: 2100, n: 1 } },
+    { q: "On retire les traînées de condensation du calcul du vol. Le résultat…", o: ["baisse d'environ 45 %", "ne change pas", "baisse de 5 %"], a: 0, tag: "s3trav",
+      why: "Le facteur passe de 0,178 à 0,098 : 2 100 × 0,098 = 206 kgCO₂e. Deux bilans qui ne font pas le même choix ne se comparent pas.", set: { m: 1, t: 1, km: 2100, n: 1 } }
+  ] };
+
+L.m16 = { title: "Un bureau loué", law: "Les émissions estimées sont proportionnelles à la surface, à l'intensité et au facteur du réseau. Le bail ne change pas leur montant : il change le scope où elles vont.",
+  params: [{ k: "s", l: "Surface louée", u: "m²", min: 100, max: 10000, step: 100, def: 2000 }, { k: "i", l: "Électricité par m² et par an", u: "kWh/m²", min: 50, max: 400, step: 10, def: 150 },
+    { k: "fe", l: "Réseau électrique", type: "sel", opts: ELEC, def: 0 }, { k: "b", l: "Qui exploite le bâtiment ?", type: "sel", opts: [["Le bailleur", 0], ["Le preneur", 1]], def: 0 }],
+  calc: function (p) { var kwh = p.s * p.i, e = kwh * p.fe / 1000;
+    return { main: e, rows: [row("Émissions estimées", e, "tCO₂e", 1), row("Électricité estimée", kwh, "kWh")],
+      note: p.b ? "Le preneur exploite le bâtiment : pour lui, ces émissions vont en scope 2." : "Le bailleur exploite le bâtiment : pour le preneur, ces émissions vont en scope 3, catégorie 8." }; },
+  predicts: [
+    { q: "2 000 m² loués en France, à 150 kWh par m² et par an. Le bailleur gère l'énergie. Pour le locataire, ces émissions sont de…", o: ["15,6 t, en scope 3 catégorie 8", "15,6 t, en scope 2", "300 t, en scope 3 catégorie 8"], a: 0, tag: "s3lease",
+      why: "2 000 × 150 = 300 000 kWh. 300 000 × 0,052 = 15 600 kgCO₂e. Le locataire n'exploite pas l'actif : catégorie 8.", set: { s: 2000, i: 150, fe: 0, b: 0 } },
+    { q: "Le même bureau, mais le locataire tient désormais le contrat d'électricité et règle les équipements. Qu'est-ce qui change ?", o: ["Le scope : les mêmes 15,6 t passent en scope 2", "Le montant : il baisse", "Rien du tout"], a: 0, tag: "s3lease",
+      why: "La physique est identique. Seul le rattachement change : celui qui exploite compte en scopes 1 et 2.", set: { s: 2000, i: 150, fe: 0, b: 1 } },
+    { q: "Ce bureau se trouve dans un pays au facteur moyen de l'Union européenne (0,21 kgCO₂e/kWh). Ses émissions sont multipliées par…", o: ["environ 4", "environ 2", "1 : la surface est la même"], a: 0, tag: "mix",
+      why: "0,21 ÷ 0,052 ≈ 4. Pour un parc de bureaux international, le pays compte autant que les m².", set: { s: 2000, i: 150, fe: 1, b: 0 } }
+  ] };
+
+L.m17 = { title: "Une vie de terminal", law: "Les émissions d'usage sont proportionnelles au nombre d'unités, à la puissance, à la durée de vie et au facteur du réseau.",
+  params: [{ k: "n", l: "Terminaux vendus dans l'année", u: "", min: 1000, max: 500000, step: 1000, def: 100000 }, { k: "w", l: "Puissance moyenne", u: "W", min: 1, max: 20, step: 0.5, def: 5 },
+    { k: "y", l: "Durée de vie", u: "ans", min: 1, max: 10, step: 1, def: 5 }, { k: "fe", l: "Réseau du pays d'usage", type: "sel", opts: ELEC, def: 1 }],
+  calc: function (p) { var k1 = p.w / 1000 * 8760 * p.y, tot = p.n * k1, e = tot * p.fe / 1000;
+    return { main: e, rows: [row("Catégorie 11, comptée l'année de la vente", e, "tCO₂e", 1), row("Énergie d'un terminal sur sa vie", k1, "kWh"), row("Énergie de tous les terminaux", tot / 1e6, "GWh"), row("Émissions par année d'usage", e / p.y, "tCO₂e")] }; },
+  predicts: [
+    { q: "Un terminal de 5 W reste allumé en continu pendant 5 ans. Sur sa vie, il consomme…", o: ["environ 219 kWh", "environ 25 kWh", "environ 2 190 kWh"], a: 0, tag: "pe",
+      why: "5 W = 0,005 kW. 0,005 × 8 760 h × 5 ans = 219 kWh. Une petite puissance, sur une longue durée.", set: { n: 100000, w: 5, y: 5, fe: 1 } },
+    { q: "100 000 terminaux vendus cette année, utilisés 5 ans dans l'Union européenne (0,21 kgCO₂e/kWh). Quelle catégorie 11 pour le bilan de cette année ?", o: ["Environ 4 600 t : les cinq années d'un coup", "Environ 920 t : une année d'usage", "0 : rien n'a encore été consommé"], a: 0, tag: "s3use",
+      why: "100 000 × 219 kWh × 0,21 = 4 599 tCO₂e. Toute la durée de vie est comptée l'année de la vente.", set: { n: 100000, w: 5, y: 5, fe: 1 } },
+    { q: "Un nouveau modèle consomme 3 W au lieu de 5 W. La catégorie 11 des ventes de l'année…", o: ["baisse de 40 %", "baisse de 2 %", "ne baisse que dans 5 ans"], a: 0, tag: "s3use",
+      why: "Les émissions sont proportionnelles à la puissance : 3 ÷ 5 = 0,6. L'effet d'une meilleure conception apparaît dès l'année de la vente.", set: { n: 100000, w: 3, y: 5, fe: 1 } }
+  ] };
+
+/* ---------- exercices de calcul générés ---------- */
+var G = WL.GEN;
+var FAM = [["conseil informatique", R.ratio.it], ["télécommunications", R.ratio.telecom], ["services d'hébergement et de restauration", R.ratio.hotel], ["services financiers", R.ratio.fin], ["produits métalliques", R.ratio.metal]];
+
+G.m11 = function () { var s = pick([[6000, 3000, 21000], [1200, 800, 8000], [15000, 5000, 30000], [400, 600, 9000], [9000, 3000, 8000]]), t = s[0] + s[1] + s[2], a = s[2] / t * 100;
+  return num(`Une entreprise émet ${f(s[0])} t en scope 1, ${f(s[1])} t en scope 2 et ${f(s[2])} t en scope 3. Quelle est la part du scope 3 dans le total, en pourcentage ?`, a, "%",
+    [`Total : ${f(s[0])} + ${f(s[1])} + ${f(s[2])} = ${f(t)} t.`, `Part du scope 3 : ${f(s[2])} ÷ ${f(t)} = ${f(a, 1)} %.`],
+    [{ v: s[2] / (s[0] + s[1]) * 100, tag: "pct", msg: "Tu as divisé par les scopes 1 et 2 seulement. La part se calcule sur le total des trois scopes." }, { v: (s[0] + s[1]) / t * 100, tag: "pct", msg: "Tu as calculé la part des scopes 1 et 2. On demande celle du scope 3." }]); };
+
+G.m12 = function () { var fam = pick(FAM);
+  if (Math.random() < 0.4) { var eur = pick([180000, 240000, 480000, 750000]), a = eur / 1000 * fam[1] / 1000;
+    return num(`Une ligne de la base achats indique ${f(eur)} € HT de ${fam[0]}. Ratio monétaire : ${fam[1]} kgCO₂e par millier d'euros. Quelles sont les émissions, en tonnes de CO₂e ?`, a, "tCO₂e",
+      [`En milliers d'euros : ${f(eur)} € = ${f(eur / 1000)} k€.`, `${f(eur / 1000)} × ${fam[1]} = ${f(eur / 1000 * fam[1], 0)} kgCO₂e.`, `En tonnes : ${f(a, 2)} tCO₂e.`],
+      [{ v: eur * fam[1] / 1000, tag: "spend", msg: "Tu as appliqué le ratio aux euros. Il vaut pour mille euros : convertis d'abord en k€." }, { v: eur / 1000 * fam[1], tag: "fe", msg: "C'est le résultat en kilogrammes. En tonnes, divise par 1 000." }]); }
+  var d = pick([120, 250, 400, 800, 1500, 3200]), e = d * fam[1] / 1000;
+  return num(`Une entreprise a dépensé ${f(d)} k€ HT en ${fam[0]}. Avec un ratio de ${fam[1]} kgCO₂e/k€, quelles sont les émissions, en tonnes de CO₂e ?`, e, "tCO₂e",
+    ["Émissions = dépense (k€) × ratio (kgCO₂e/k€).", `${f(d)} × ${fam[1]} = ${f(d * fam[1], 0)} kgCO₂e.`, `En tonnes : ÷ 1 000 = ${f(e, 2)} tCO₂e.`],
+    [{ v: d * fam[1], tag: "spend", msg: "Ton résultat est 1 000 fois trop grand : il est en kilogrammes, ou tu as lu la dépense en euros au lieu de milliers d'euros." }, { v: d / fam[1], tag: "spend", msg: "Tu as divisé par le ratio. Chaque millier d'euros « pèse » des kilogrammes : on multiplie." }]); };
+
+G.m13 = function () { var d0 = pick([2000, 3000, 4000, 5000]), d1 = d0 + pick([500, 1000, 1500]), r0 = pick([170, 250, 320]), r1 = r0 - pick([20, 34, 50]);
+  if (Math.random() < 0.5) { var vol = (d1 - d0) * r0 / 1000;
+    return num(`Les dépenses d'une famille d'achats passent de ${f(d0)} à ${f(d1)} k€. Son ratio passe de ${r0} à ${r1} kgCO₂e/k€. Quel est l'effet volume, en tonnes de CO₂e ?`, vol, "tCO₂e",
+      ["Effet volume = (dépense de l'année 2 − dépense de l'année 1) × ratio de l'année 1.", `(${f(d1)} − ${f(d0)}) × ${r0} = ${f((d1 - d0) * r0, 0)} kgCO₂e, soit ${f(vol, 1)} tCO₂e.`],
+      [{ v: (d1 - d0) * r1 / 1000, tag: "s3var", msg: "Tu as utilisé le ratio de l'année 2. Pour isoler le volume, on garde le ratio de l'année 1." }, { v: (d1 * r1 - d0 * r0) / 1000, tag: "s3var", msg: "Tu as calculé l'écart total. L'effet volume ne retient que le changement de dépenses, à ratio inchangé." }, { v: (d1 - d0) * r0, tag: "fe", msg: "C'est le résultat en kilogrammes. En tonnes, divise par 1 000." }]); }
+  var ec = (d1 - d0) * r1 / 1000;
+  return num(`Les dépenses d'une famille d'achats passent de ${f(d0)} à ${f(d1)} k€. Son ratio a été mis à jour de ${r0} à ${r1} kgCO₂e/k€. On recalcule les deux années avec le nouveau ratio. Quel est alors l'écart d'émissions, en tonnes de CO₂e ?`, ec, "tCO₂e",
+    ["À méthode constante, les deux années utilisent le même ratio : le nouveau.", `(${f(d1)} − ${f(d0)}) × ${r1} = ${f((d1 - d0) * r1, 0)} kgCO₂e, soit ${f(ec, 1)} tCO₂e.`],
+    [{ v: (d1 * r1 - d0 * r0) / 1000, tag: "s3var", msg: "Tu as gardé l'ancien ratio pour l'année 1. À méthode constante, les deux années utilisent le même ratio." }, { v: (d1 - d0) * r0 / 1000, tag: "s3var", msg: "Tu as pris l'ancien ratio. On recalcule avec le nouveau, celui de la méthode en vigueur." }]); };
+
+G.m14 = function () { var e = pick([["de gazole", "L", "litre", R.gazoleComb, R.gazoleAmont, [1200, 1800, 2500, 4000]], ["de gaz naturel", "kWh PCS", "kWh", R.gazComb, R.gazAmont, [84300, 100000, 250000]]]), q = pick(e[5]);
+  return num(`Un site a consommé ${f(q)} ${e[1]} ${e[0]}. Facteurs : ${f(e[3], 3)} kgCO₂e par ${e[2]} pour la combustion, ${f(e[4], 3)} pour l'amont. Quelles émissions vont en scope 3, catégorie 3, en kgCO₂e ?`, q * e[4], "kgCO₂e",
+    ["La catégorie 3 ne reçoit que l'amont.", `${f(q)} × ${f(e[4], 3)} = ${f(q * e[4], 0)} kgCO₂e.`],
+    [{ v: q * e[3], tag: "amont", msg: "Tu as calculé la combustion : c'est le scope 1. On demande l'amont." }, { v: q * (e[3] + e[4]), tag: "amont", msg: "Tu as appliqué le facteur complet. La catégorie 3 ne reçoit que la part d'amont." }, { v: q * e[4] / 1000, tag: "fe", msg: "Tu as converti en tonnes. On demande des kilogrammes." }]); };
+
+G.m15 = function () { var x = Math.random();
+  if (x < 0.4) { var km = pick([900, 1300, 2100, 5800, 11000]), n = pick([1, 2, 4]), a = km <= 1000 ? ["court-courrier", R.avion.court[0]] : km <= 3500 ? ["moyen-courrier", R.avion.moyen[0]] : ["long-courrier", R.avion.long[0]], e = km * n * a[1];
+    var w = [{ v: e / 1000, tag: "fe", msg: "Tu as converti en tonnes. On demande des kilogrammes." }];
+    if (n > 1) { w.unshift({ v: km * a[1], tag: "s3trav", msg: "Tu as compté un seul voyageur. Chaque passager porte sa part : multiplie par le nombre de voyageurs." }); }
+    return num(`${n > 1 ? n + " collègues font ensemble" : "Un salarié fait"} un aller-retour de ${f(km)} km en avion ${a[0]} (${f(a[1], 3)} kgCO₂e par passager.km). Quelles sont les émissions, en kgCO₂e ?`, e, "kgCO₂e",
+      ["Émissions = distance × voyageurs × facteur.", `${f(km)} × ${n} × ${f(a[1], 3)} = ${f(e, 0)} kgCO₂e.`], w); }
+  if (x < 0.7) { var d = pick([12, 20, 30, 44]), j = pick([120, 180, 220]);
+    return num(`Un salarié parcourt ${d} km aller-retour entre son domicile et le bureau, en voiture, seul, ${j} jours par an. Avec 0,20 kgCO₂e par km, quelles sont ses émissions annuelles de catégorie 7, en kgCO₂e ?`, d * j * R.voiture, "kgCO₂e",
+      [`Distance annuelle : ${d} × ${j} = ${f(d * j)} km.`, `Émissions : ${f(d * j)} × 0,20 = ${f(d * j * R.voiture, 0)} kgCO₂e.`],
+      [{ v: d * R.voiture, tag: "s3trav", msg: "C'est une seule journée. Multiplie par le nombre de jours." }, { v: d * j, tag: "fe", msg: "Tu as calculé les kilomètres de l'année. Multiplie par le facteur d'émission." }]); }
+  var m = pick([45, 60, 90, 150]), p = pick([1.5, 2, 2.5]);
+  return num(`Une note de frais indique ${m} € de taxi, sans distance. Le prix moyen est de ${f(p)} € par km, et le facteur de 0,20 kgCO₂e par km. Quelles sont les émissions estimées, en kgCO₂e ?`, m / p * R.voiture, "kgCO₂e",
+    [`Distance reconstituée : ${m} ÷ ${f(p)} = ${f(m / p, 0)} km.`, `Émissions : ${f(m / p, 0)} × 0,20 = ${f(m / p * R.voiture, 1)} kgCO₂e.`],
+    [{ v: m * R.voiture, tag: "s3trav", msg: "Tu as appliqué le facteur aux euros. Retrouve d'abord la distance : montant ÷ prix au km." }, { v: m * p * R.voiture, tag: "s3trav", msg: "Tu as multiplié par le prix au km. Pour retrouver des kilomètres, on divise." }, { v: m / p, tag: "fe", msg: "Tu t'es arrêté aux kilomètres. Multiplie par le facteur d'émission." }]); };
+
+G.m16 = function () { var s = pick([500, 800, 1200, 2500, 4000]), i = pick([120, 150, 200, 250]), z = pick([["France", R.feElecFR], ["Union européenne", R.feElecUE], ["États-Unis", R.feElecUS]]), a = s * i * z[1] / 1000;
+  var w = [{ v: s * i * z[1], tag: "fe", msg: "C'est le résultat en kilogrammes. En tonnes, divise par 1 000." }, { v: s * i / 1000, tag: "s3lease", msg: "Tu t'es arrêté à l'électricité, en MWh. Applique le facteur d'émission." }];
+  if (z[1] !== R.feElecFR) { w.push({ v: s * i * R.feElecFR / 1000, tag: "mix", msg: "Tu as appliqué le facteur français. Le facteur dépend du pays du bâtiment." }); }
+  return num(`Un bureau loué de ${f(s)} m² consomme environ ${i} kWh d'électricité par m² et par an (réseau « ${z[0]} » : ${f(z[1], 3)} kgCO₂e/kWh). Quelles sont ses émissions annuelles estimées, en tonnes de CO₂e ?`, a, "tCO₂e",
+    [`Électricité : ${f(s)} × ${i} = ${f(s * i)} kWh.`, `Émissions : ${f(s * i)} × ${f(z[1], 3)} = ${f(s * i * z[1], 0)} kgCO₂e, soit ${f(a, 1)} tCO₂e.`], w); };
+
+G.m17 = function () {
+  if (Math.random() < 0.5) { var n = pick([10000, 25000, 50000, 200000]), k = pick([20, 40, 45]), y = pick([4, 5, 7]), z = pick([["UE", R.feElecUE], ["France", R.feElecFR], ["monde", R.feElecMonde]]), a = n * k * y * z[1] / 1000;
+    return num(`Une entreprise vend ${f(n)} appareils. Chacun consommera ${k} kWh par an pendant ${y} ans, sur un réseau à ${f(z[1], 3)} kgCO₂e/kWh. Quelle est la catégorie 11 de l'année de la vente, en tonnes de CO₂e ?`, a, "tCO₂e",
+      [`Énergie sur la durée de vie : ${f(n)} × ${k} × ${y} = ${f(n * k * y)} kWh.`, `Émissions : × ${f(z[1], 3)} = ${f(n * k * y * z[1], 0)} kgCO₂e, soit ${f(a, 1)} tCO₂e.`],
+      [{ v: n * k * z[1] / 1000, tag: "s3use", msg: "Tu as compté une seule année d'usage. La catégorie 11 couvre toute la durée de vie." }, { v: n * k * y * z[1], tag: "fe", msg: "C'est le résultat en kilogrammes. En tonnes, divise par 1 000." }, { v: n * k * y / 1000, tag: "s3use", msg: "Tu t'es arrêté à l'énergie, en MWh. Applique le facteur d'émission." }]); }
+  var t = pick([[0.5, "500 millions"], [1, "1 milliard"], [2, "2 milliards"], [4, "4 milliards"]]), g = pick([[R.paiement.magasin, "en magasin"], [R.paiement.ligne, "en ligne"]]), b = t[0] * g[0] * 1000;
+  return num(`Une analyse de cycle de vie attribue ${f(g[0], 2)} g de CO₂e à un paiement ${g[1]}. Combien pèsent ${t[1]} de paiements, en tonnes de CO₂e ?`, b, "tCO₂e",
+    [`${t[1]} × ${f(g[0], 2)} g = ${f(t[0] * g[0], 3)} milliard${t[0] * g[0] >= 2 ? "s" : ""} de grammes.`, `Un milliard de grammes = 1 000 tonnes. Résultat : ${f(b, 0)} tCO₂e.`],
+    [{ v: t[0] * g[0], tag: "fe", msg: "Il manque un facteur 1 000 : un milliard de grammes font 1 000 tonnes." }, { v: b * 1000, tag: "fe", msg: "C'est le résultat en kilogrammes. En tonnes, divise par 1 000." }]); };
+
+/* ---------- confusions ---------- */
+var C = WL.CONF;
+C.scope.mod = "m11";
+C.s3cat = { name: "Catégories du scope 3", mod: "m11", diag: "Tu ranges une émission dans la mauvaise catégorie du scope 3.",
+  alt: "Pose trois questions. Est-ce avant ou après la vente ? Avant : catégories 1 à 8. Après : catégories 9 à 15. Quelle est la nature du flux : un achat, de l'énergie, un transport, un déchet, un déplacement, un actif loué, un produit vendu ? Enfin, qui paie et qui exploite ? Un transport payé par l'entreprise est en amont (catégorie 4), même s'il part vers le client. Un bien durable est une immobilisation (catégorie 2), pas un achat courant (catégorie 1)." };
+C.s3rep = { name: "Repères du scope 3", mod: "m11", diag: "Un ordre de grandeur du scope 3 t'échappe encore.",
+  alt: "Retiens trois repères pour Worldline en 2025. Le scope 3 pèse environ 98 % du total. Les achats (catégorie 1) en font la moitié. L'usage des produits vendus (catégorie 11) en fait un tiers. Toutes les autres catégories se partagent le cinquième restant." };
+C.spend = { name: "Méthode par les dépenses", mod: "m12", diag: "Tu te trompes d'unité entre euros et milliers d'euros, ou tu prends le résultat pour une mesure.",
+  alt: "Un ratio monétaire fonctionne comme un prix au kilo à l'envers : au lieu d'euros par kilogramme, des kilogrammes de CO₂e par millier d'euros. Vérifie l'ordre de grandeur : 1 000 k€ de services donnent autour de 100 tonnes. Et souviens-toi que c'est une moyenne de secteur : elle dit où regarder, pas ce que ton fournisseur émet vraiment." };
+C.s3var = { name: "Lire une variation", mod: "m13", diag: "Tu prends un changement de prix, de ratio ou de code d'achat pour un changement réel.",
+  alt: "Pense à une balance qu'on vient de recalibrer. Si ton poids affiché change le jour où l'on change la balance, tu n'as ni grossi ni maigri. Avant de commenter un écart d'émissions, vérifie trois choses. L'instrument a-t-il changé : le ratio ? Les prix ont-ils changé ? L'étiquette a-t-elle changé : le code d'achat ? Ce qui reste est le changement réel." };
+C.amont = { name: "Amont de l'énergie", mod: "m14", diag: "Tu ranges l'amont d'une énergie en scope 1 ou 2, ou tu le comptes deux fois.",
+  alt: "Suis le litre à la trace. Du puits à la cuve, il est chez les autres : scope 3, catégorie 3. De la cuve au pot d'échappement, il est chez toi : scope 1. Le facteur complet, 3,10 kg par litre de gazole, est la somme des deux morceaux : 0,61 + 2,49. Si tu appliques le facteur complet en scope 1, il ne reste plus rien à mettre en catégorie 3." };
+C.s3trav = { name: "Flotte, missions, trajets quotidiens", mod: "m15", diag: "Tu confonds les trois types de déplacements, ou tu sautes une étape du calcul.",
+  alt: "Demande-toi à qui est le véhicule, puis pourquoi on roule. Véhicule de l'entreprise : scope 1. Véhicule d'un tiers, pour une mission : catégorie 6. Trajet entre la maison et le bureau : catégorie 7. Pour le calcul, il faut toujours des kilomètres : s'il n'y a qu'un montant, on le divise par un prix au kilomètre avant d'appliquer le facteur." };
+C.s3lease = { name: "Actifs loués et contrôle", mod: "m16", diag: "Tu ne regardes pas qui exploite l'actif loué, ou tu inverses bailleur et preneur.",
+  alt: "Cherche qui tient le thermostat et le contrat d'énergie. Celui-là compte l'énergie en scopes 1 et 2. L'autre partie au bail la compte en scope 3 : en catégorie 8 s'il est locataire, en catégorie 13 s'il est propriétaire. Le montant des émissions ne dépend pas du bail : seul le rattachement en dépend." };
+C.s3use = { name: "Produits vendus : toute la durée de vie", mod: "m17", diag: "Tu ne comptes qu'une année d'usage, ou tu crois que ces émissions ne concernent que le client.",
+  alt: "Pense à une garantie. Le jour de la vente, le vendeur s'engage pour toute la durée de la garantie, pas pour une année. De même, le jour de la vente, il inscrit à son bilan les émissions de toute la vie du produit. Le client, lui, les comptera année après année dans son scope 2 : ce sont deux bilans différents." };
+
+["spend:m12", "s3var:m13", "amont:m14", "s3trav:m15", "s3lease:m16", "s3use:m17"].forEach(function (x) { var p = x.split(":"); WL.CONF_GEN[p[0]] = p[1]; });
+
+var P = WL.POOL;
+P.s3cat = [
+  mcq("Une entreprise achète des licences de logiciel pour l'année. Dans quelle catégorie du scope 3 ?", "Catégorie 1 : biens et services achetés", ["Catégorie 2 : immobilisations", "Catégorie 11 : usage des produits vendus"], "Un service consommé dans l'année : catégorie 1."),
+  mcq("Un fournisseur livre des marchandises et facture le transport à l'entreprise. Ce transport relève…", "de la catégorie 4 : transport amont", ["de la catégorie 9 : transport aval", "du scope 1"], "Un transport payé par l'entreprise, dans le véhicule d'un tiers : catégorie 4."),
+  mcq("Les catégories 9 à 15 du scope 3 concernent…", "l'aval : ce qui se passe après la vente", ["l'amont : les fournisseurs", "l'énergie achetée"], "Catégories 1 à 8 : amont. Catégories 9 à 15 : aval."),
+  mcq("Le papier et les cartons jetés par un site, puis recyclés par un prestataire, relèvent…", "de la catégorie 5 : déchets des activités", ["de la catégorie 12 : fin de vie des produits vendus", "de la catégorie 1 : achats"], "Les déchets des sites vont en catégorie 5. La catégorie 12 concerne les produits vendus.")];
+P.s3rep = [
+  mcq("Chez Worldline en 2025, les achats (catégorie 1) représentent environ…", "la moitié du scope 3", ["un dixième du scope 3", "la totalité du scope 3"], "157 574 t sur 320 146 t : 49 %."),
+  mcq("Chez Worldline en 2025, les scopes 1 et 2 réunis pèsent environ…", "2 % du total", ["la moitié du total", "20 % du total"], "5 708 + 2 457 = 8 165 t, sur un total de 328 311 t."),
+  mcq("Chez Worldline en 2025, l'usage des produits vendus (catégorie 11) représente environ…", "un tiers du scope 3", ["1 % du scope 3", "les trois quarts du scope 3"], "101 093 t sur 320 146 t : 32 %.")];
+P.scope.push(
+  mcq("Le gazole brûlé par le camion d'un transporteur, pour livrer les colis d'un client, est…", "le scope 1 du transporteur et le scope 3 du client", ["le scope 1 des deux", "le scope 3 des deux"], "Celui qui brûle compte en scope 1. Celui qui commande compte en scope 3."),
+  mcq("L'électricité consommée chez un commerçant par un terminal de paiement est, pour ce commerçant…", "du scope 2", ["du scope 1", "du scope 3"], "Électricité achetée et consommée : scope 2 de celui qui la consomme. Pour le vendeur du terminal, c'est du scope 3, catégorie 11."));
+
+/* ---------- questions de quiz : mode « Scope 3 » ---------- */
+var LBL = { s1: "Scope 1", s2: "Scope 2", c1: "Scope 3 · cat. 1 : achats", c2: "Scope 3 · cat. 2 : immobilisations", c3: "Scope 3 · cat. 3 : amont de l'énergie", c4: "Scope 3 · cat. 4 : transport amont",
+  c5: "Scope 3 · cat. 5 : déchets des sites", c6: "Scope 3 · cat. 6 : déplacements professionnels", c7: "Scope 3 · cat. 7 : domicile-travail", c8: "Scope 3 · cat. 8 : actifs loués, côté preneur",
+  c9: "Scope 3 · cat. 9 : transport aval", c11: "Scope 3 · cat. 11 : usage des produits vendus", c12: "Scope 3 · cat. 12 : fin de vie des produits vendus", c13: "Scope 3 · cat. 13 : actifs loués, côté bailleur" };
+function lab(k) { return LBL[k]; }
+function push(id, tag, o) { o.id = id; o.th = "s3"; WL.Q.push(o); WL.QTAG[id] = tag; }
+function cq(id, tag, doc, good, bad, e) { push(id, tag, { q: "Où ranges-tu cette émission ?", o: [lab(good)].concat(bad.map(lab)), a: 0, e: e, ctx: "Scope 3 · chaîne de valeur", d: doc }); }
+function mq(id, tag, q, good, bad, e) { push(id, tag, { q: q, o: [good].concat(bad), a: 0, e: e }); }
+function tq(id, tag, q, truth, e) { push(id, tag, { q: q, o: ["Vrai", "Faux"], a: truth ? 0 : 1, fix: true, e: e }); }
+
+cq("x1", "s3cat", ["Facture fournisseur", "Prestation de conseil informatique", "Montant : 120 000 € HT"], "c1", ["c2", "c4", "s1"], "Un service acheté et consommé dans l'année : catégorie 1, biens et services achetés.");
+cq("x2", "s3cat", ["Facture d'investissement", "Baies de serveurs pour le Data Center", "Montant immobilisé : 2 000 000 € HT"], "c2", ["c1", "c8", "s1"], "Un bien durable inscrit à l'actif : catégorie 2, immobilisations. Il est compté en totalité l'année de l'achat.");
+cq("x3", "amont", ["Calcul complémentaire", "Diesel du groupe électrogène : 1 800 L", "Facteur d'amont : 0,61 kgCO₂e/L"], "c3", ["s1", "c1", "c4"], "L'extraction, le raffinage et le transport du carburant vont en catégorie 3. La combustion, elle, est en scope 1.");
+cq("x4", "s3cat", ["Facture de transport", "Livraison de terminaux aux commerçants", "Prestation payée par l'entreprise"], "c4", ["c9", "c6", "s1"], "Une prestation de transport payée par l'entreprise va en catégorie 4, même si le flux part vers les clients.");
+cq("x5", "s3cat", ["Bordereau de suivi des déchets", "Équipements électroniques hors d'usage du site", "1,2 t, filière de recyclage"], "c5", ["c12", "c1", "c2"], "Des déchets produits par un site et traités par un tiers : catégorie 5.");
+cq("x6", "s3trav", ["Relevé de l'agence de voyages", "Vol Paris – Madrid, aller-retour", "2 100 km"], "c6", ["c7", "s1", "c4"], "Une mission dans un véhicule qui n'appartient pas à l'entreprise : catégorie 6.");
+cq("x7", "s3trav", ["Enquête mobilité", "Trajet domicile – bureau en voiture", "25 km aller-retour, 200 jours par an"], "c7", ["c6", "s1", "c4"], "Le trajet quotidien entre le domicile et le lieu de travail : catégorie 7.");
+cq("x8", "s3lease", ["Décompte de charges locatives", "Bureaux loués, énergie gérée par le bailleur", "Électricité refacturée : 300 000 kWh"], "c8", ["s2", "c13", "c1"], "Le bailleur exploite l'immeuble : pour le locataire, catégorie 8. S'il tenait lui-même le contrat d'électricité, ce serait du scope 2.");
+cq("x9", "s3use", ["Hypothèses produit", "100 000 terminaux vendus dans l'année", "219 kWh consommés par terminal en 5 ans"], "c11", ["c1", "s2", "c12"], "L'électricité consommée chez les clients par les produits vendus : catégorie 11, sur toute la durée de vie.");
+cq("x10", "s3use", ["Hypothèses produit", "Terminaux vendus dans l'année", "Collecte et recyclage en fin de vie"], "c12", ["c5", "c11", "c2"], "La fin de vie des produits vendus va en catégorie 12. Les déchets des sites vont en catégorie 5.");
+cq("x11", "s3lease", ["Bail", "Étage de bureaux appartenant à l'entreprise", "Loué à une société qui paie son électricité"], "c13", ["c8", "s2", "c1"], "L'entreprise est bailleur et n'exploite pas les locaux : catégorie 13, actifs loués en aval.");
+cq("x12", "s3trav", ["Carte carburant", "Voiture de fonction de la flotte", "Diesel : 1 450 L"], "s1", ["c6", "c7", "c3"], "Le carburant brûlé dans un véhicule que l'entreprise contrôle est du scope 1. Seul son amont ira en catégorie 3.");
+cq("x13", "scope", ["Facture d'électricité", "Data Center exploité par l'entreprise", "Consommation : 245 000 kWh"], "s2", ["c1", "c3", "c8"], "L'électricité achetée et consommée par un site que l'entreprise exploite : scope 2. Son amont et les pertes en ligne vont en scope 3.");
+mq("x14", "s3cat", "Combien de catégories le GHG Protocol distingue-t-il dans le scope 3 ?", "15", ["3", "8", "20"], "Huit en amont (1 à 8) et sept en aval (9 à 15).");
+mq("x15", "spend", "Le ratio monétaire du conseil informatique est de 75 kgCO₂e/k€. Que signifie-t-il ?", "En moyenne, 1 000 € HT de conseil informatique correspondent à 75 kg de CO₂e", ["Chaque consultant émet 75 kg de CO₂e", "75 % du prix correspond à du carbone", "1 € de conseil émet 75 kg de CO₂e"], "C'est une moyenne de secteur, par millier d'euros hors taxes.");
+mq("x16", "spend", "200 k€ HT de télécommunications, avec un ratio de 136 kgCO₂e/k€. Les émissions calculées sont de…", "27,2 tCO₂e", ["27 200 tCO₂e", "2,72 tCO₂e", "136 tCO₂e"], "200 × 136 = 27 200 kgCO₂e, soit 27,2 t.");
+mq("x17", "spend", "Pour calculer les émissions d'un achat, quelle donnée reflète le mieux la réalité du fournisseur ?", "Les émissions communiquées par le fournisseur lui-même", ["Le ratio monétaire du secteur", "Un facteur moyen par quantité achetée", "Le chiffre d'affaires du fournisseur"], "Le ratio monétaire est le plus simple et le moins précis. Les données du fournisseur sont les plus fidèles, mais les plus coûteuses à obtenir.");
+mq("x18", "s3var", "Un fournisseur relève ses tarifs de 8 %. Les volumes achetés ne changent pas. Les émissions calculées par les dépenses…", "augmentent de 8 %, sans changement réel", ["ne changent pas", "baissent de 8 %", "augmentent de 16 %"], "La méthode suit les euros. Pour neutraliser cet effet, on raisonne en euros constants.");
+mq("x19", "s3rep", "Dans le rapport de durabilité 2025 de Worldline, le scope 3 représente quelle part du total des émissions ?", "Environ 98 %", ["Environ 50 %", "Environ 75 %", "Environ 10 %"], "320 146 t sur 328 311 t. Les scopes 1 et 2 réunis pèsent environ 2 %.");
+mq("x20", "s3rep", "Chez Worldline en 2025, quelles sont les deux catégories les plus lourdes du scope 3 ?", "Les achats (catégorie 1) et l'usage des produits vendus (catégorie 11)", ["Les déplacements professionnels et les trajets domicile-travail", "Les déchets et le transport", "Les immobilisations et les actifs loués"], "157 574 t et 101 093 t : à elles deux, plus de 80 % du scope 3.");
+mq("x21", "amont", "Le facteur de 3,10 kgCO₂e par litre de gazole est un facteur « complet ». Il additionne…", "la combustion (2,49) et l'amont (0,61)", ["le scope 1 et le scope 2", "le CO₂ et la vapeur d'eau", "le gazole et l'essence"], "La combustion va en scope 1, l'amont en scope 3, catégorie 3.");
+mq("x22", "s3trav", "Un vol est calculé une fois avec les traînées de condensation, une fois sans. Le résultat avec traînées est…", "presque deux fois plus élevé", ["identique", "10 % plus élevé", "dix fois plus élevé"], "Pour un moyen-courrier, le facteur passe de 0,098 à 0,178 kgCO₂e par passager.km : × 1,8.");
+tq("x23", "scope", "Une même tonne de CO₂e peut figurer dans le bilan de plusieurs entreprises.", true, "Le gazole du transporteur est son scope 1 et le scope 3 de son client. C'est pourquoi on n'additionne pas les bilans.");
+tq("x24", "s3cat", "Selon le GHG Protocol, les émissions de fabrication d'un serveur acheté s'étalent sur sa durée d'amortissement.", false, "Elles sont comptées en totalité l'année de l'acquisition, en catégorie 2.");
+tq("x25", "spend", "Obtenir une remise de 10 % d'un fournisseur réduit de 10 % ses émissions réelles.", false, "La remise réduit le résultat du calcul par les dépenses, pas les émissions physiques.");
+tq("x26", "s3use", "La catégorie 11 ne compte que l'énergie consommée par les produits pendant l'année de la vente.", false, "Elle compte toute la durée de vie des produits vendus dans l'année.");
+tq("x27", "s3cat", "Un transport vers les clients, payé par l'entreprise, relève de la catégorie 9 (aval).", false, "Le critère est « qui paie » : payé par l'entreprise, il va en catégorie 4.");
+tq("x28", "s3lease", "Si le bailleur exploite l'immeuble et refacture l'énergie, le locataire compte ces émissions en catégorie 8.", true, "Le locataire n'a pas le contrôle opérationnel : actifs loués en amont.");
+
+WL.MODES.push({ id: "s3", name: "Scope 3", sub: "Catégories, méthodes, pièges", icon: "route" });
+
+/* ---------- fils rouges ---------- */
+[
+{ id: "c6", title: "La facture d'un prestataire informatique", sub: "Des euros aux tonnes, puis au doute",
+  steps: [["achats", "La donnée", "Un prestataire facture 600 000 € HT de conseil informatique sur l'année. Aucune donnée physique : la donnée d'activité est le montant.", "m12"],
+    ["clim", "Les émissions", "600 k€ × 75 kgCO₂e/k€ = 45 tCO₂e, en scope 3, catégorie 1.", "m12"],
+    ["eco", "L'année suivante", "Le prestataire relève ses tarifs de 10 % : 660 k€ pour le même travail. Le calcul donne 49,5 t. Rien n'a changé physiquement.", "m13"],
+    ["compta", "Le changement de méthode", "La base de facteurs est mise à jour et le ratio change. Pour comparer, on recalcule l'année précédente avec le nouveau ratio.", "m13"],
+    ["pol", "Le cadre", "La norme européenne ESRS E1 demande de publier le scope 3. Un auditeur vérifie alors la méthode, les facteurs et les retraitements.", "m11"],
+    ["achats", "La décision", "Pour agir vraiment, il faut sortir du ratio : demander au prestataire ses propres émissions et l'engager à les réduire.", "m13"]],
+  q: { q: "L'entreprise obtient du prestataire une remise de 15 %, à prestation égale. Dans le bilan calculé par les dépenses, puis dans la réalité :", o: [["Le chiffre baisse de 15 %, les émissions réelles ne bougent pas", 1, "", "Le calcul suit les euros. Seules des données du fournisseur montreraient une baisse réelle."], ["Les deux baissent de 15 %", 0, "spend", "La remise ne change rien à l'énergie consommée par le prestataire."], ["Rien ne change dans le bilan", 0, "spend", "Le bilan par les dépenses est proportionnel au montant : il baisse avec la remise."]] } },
+{ id: "c7", title: "Le terminal de paiement, du fournisseur au recyclage", sub: "Un objet, quatre catégories du scope 3",
+  steps: [["achats", "L'achat", "L'entreprise achète des terminaux à un fabricant. Leur fabrication a émis chez lui : catégorie 1.", "m12"],
+    ["trans", "Le transport", "Les terminaux voyagent jusqu'aux commerçants. L'entreprise paie le transporteur : catégorie 4.", "m11"],
+    ["elec", "L'usage", "Chez le commerçant, un terminal de 5 W consomme 219 kWh en cinq ans. Pour 100 000 terminaux : 21,9 millions de kWh.", "m17"],
+    ["clim", "Les émissions d'usage", "Avec le facteur moyen de l'Union européenne : 4 599 tCO₂e, comptées en catégorie 11 l'année de la vente.", "m17"],
+    ["prod", "La fin de vie", "La collecte et le recyclage des terminaux vendus vont en catégorie 12, comptée elle aussi l'année de la vente.", "m17"],
+    ["eco", "La décision", "Un terminal plus sobre réduit la catégorie 11. Un terminal qui dure plus longtemps évite d'en fabriquer un autre : moins de catégorie 1 demain.", "m10"]],
+  q: { q: "Les mêmes 100 000 terminaux sont utilisés en France (0,052 kgCO₂e/kWh) plutôt que dans l'Union européenne en moyenne (0,21). La catégorie 11 est…", o: [["divisée par 4 environ : 1 139 t", 1, "", "21 900 000 kWh × 0,052 = 1 139 tCO₂e, contre 4 599 t."], ["inchangée : les terminaux sont identiques", 0, "mix", "Même consommation, mais pas le même réseau : le facteur du pays d'usage change tout."], ["nulle : l'électricité française est décarbonée", 0, "mix", "Peu carbonée ne veut pas dire nulle : 0,052 kgCO₂e par kWh."]] } },
+{ id: "c8", title: "Une mission à Madrid", sub: "Trois façons de se déplacer, trois rangements",
+  steps: [["trans", "Le vol", "Paris – Madrid aller-retour : 2 100 km en avion moyen-courrier. 2 100 × 0,178 = 374 kgCO₂e, en catégorie 6.", "m15"],
+    ["clim", "Les traînées", "Sans les traînées de condensation, le même vol compterait 206 kgCO₂e. Le choix retenu doit être dit.", "m15"],
+    ["eco", "Le taxi", "60 € de taxi, sans distance : 60 ÷ 2 € par km = 30 km, puis 30 × 0,20 = 6 kgCO₂e.", "m15"],
+    ["comb", "La voiture de fonction", "Pour rejoindre l'aéroport, 80 km en voiture de la flotte : le carburant est du scope 1, son amont de la catégorie 3.", "m14"],
+    ["pol", "Le lendemain", "De retour, le trajet quotidien entre le domicile et le bureau relève de la catégorie 7.", "m15"]],
+  q: { q: "Deux collègues font ensemble ce même aller-retour en avion. Dans le bilan, on compte…", o: [["748 kgCO₂e : chaque passager porte sa part", 1, "", "Le facteur est par passager et par km : 2 × 2 100 × 0,178 = 748 kgCO₂e."], ["374 kgCO₂e : c'est le même avion", 0, "s3trav", "L'avion est le même, mais ses émissions sont réparties entre les passagers : deux sièges, deux parts."], ["187 kgCO₂e chacun, soit 374 au total", 0, "s3trav", "Voyager à deux ne divise pas l'empreinte d'un siège : chacun occupe le sien."]] } }
+].forEach(function (c) { WL.CASES.push(c); WL.CASE[c.id] = c; });
+
+/* ---------- fiches : les 15 catégories ---------- */
+WL.S3CATS = [
+{ n: 1, side: "amont", en: "Purchased goods and services", fr: "Biens et services achetés", mod: "m12", conf: [2, 4, 8],
+  one: "Tout ce que l'entreprise achète et consomme dans l'année : prestations, licences, fournitures.",
+  what: "Les émissions de fabrication de tous les biens et services achetés dans l'année, jusqu'à la porte du fournisseur. Les immobilisations et les postes des catégories 2 à 8 n'y figurent pas.",
+  ex: "Conseil informatique, sous-traitance, licences, hébergement de données, terminaux achetés pour être revendus.",
+  data: "Montants hors taxes par code d'achat ; à défaut, quantités achetées ; au mieux, émissions communiquées par les fournisseurs.",
+  calc: "Dépense × ratio monétaire, puis données physiques ou données du fournisseur pour les plus gros postes.",
+  trap: "Les factures d'énergie, de voyages et de transport figurent aussi dans la base achats. Il faut les retirer, sinon elles sont comptées deux fois : ici et dans les scopes 1 et 2 ou les catégories 3, 4 et 6.",
+  wl: "D'après le rapport, chaque code d'achat est multiplié par un ratio monétaire de l'ADEME." },
+{ n: 2, side: "amont", en: "Capital goods", fr: "Immobilisations", mod: "m12", conf: [1, 8],
+  one: "Ce que l'entreprise achète pour durer : serveurs, bâtiments, véhicules.",
+  what: "Les émissions de fabrication des biens durables acquis dans l'année. Le GHG Protocol les compte en totalité l'année de l'achat, sans amortissement.",
+  ex: "Serveurs et équipements de centre de données, mobilier, travaux d'aménagement.",
+  data: "Montants immobilisés par nature ; à défaut, quantités et fiches des constructeurs.",
+  calc: "Dépense × ratio monétaire, ou empreinte de fabrication fournie par le constructeur.",
+  trap: "Une grosse année d'investissement crée un pic qui ne traduit pas une dégradation. Il faut l'expliquer en commentaire.",
+  wl: "D'après le rapport : méthode par les dépenses." },
+{ n: 3, side: "amont", en: "Fuel- and energy-related activities", fr: "Amont de l'énergie", mod: "m14", conf: [1, 4],
+  one: "Ce que le litre et le kWh ont émis avant d'arriver au compteur.",
+  what: "L'extraction, le raffinage et le transport des combustibles consommés, l'amont de l'électricité achetée et les pertes en ligne du réseau. Tout ce qui, dans l'énergie, n'est pas déjà en scope 1 ou 2.",
+  ex: "L'amont des 1 800 L de diesel du groupe électrogène ; les pertes en ligne de l'électricité d'un centre de données.",
+  data: "Les mêmes litres et kWh que pour les scopes 1 et 2.",
+  calc: "Quantité consommée × facteur d'amont.",
+  trap: "Si le facteur utilisé en scope 1 est déjà « amont compris », l'amont est compté deux fois.",
+  wl: "D'après le rapport : consommations des scopes 1 et 2 multipliées par des facteurs d'amont propres à chaque pays, issus d'UL360." },
+{ n: 4, side: "amont", en: "Upstream transportation and distribution", fr: "Transport et distribution amont", mod: "m11", conf: [9, 1, 6],
+  one: "Les camions, bateaux et avions que l'entreprise paie sans les posséder.",
+  what: "Le transport des produits achetés jusqu'à l'entreprise, et toutes les prestations de transport et de logistique qu'elle paie, y compris pour livrer ses clients.",
+  ex: "Le fret des terminaux de paiement vers les entrepôts et les commerçants, quand l'entreprise paie le transporteur.",
+  data: "Tonnes transportées et distances par mode ; à défaut, montants des prestations.",
+  calc: "Tonnes × kilomètres × facteur du mode, ou dépense × ratio monétaire.",
+  trap: "Le critère est « qui paie ». Un transport sortant payé par l'entreprise reste en catégorie 4, et non en catégorie 9.",
+  wl: "D'après le rapport : méthode par les dépenses, comme la catégorie 1." },
+{ n: 5, side: "amont", en: "Waste generated in operations", fr: "Déchets des activités", mod: "m11", conf: [12],
+  one: "Ce que les sites jettent, et ce que cela devient.",
+  what: "Le traitement, par des tiers, des déchets produits par les sites : recyclage, incinération, enfouissement.",
+  ex: "Équipements électroniques hors d'usage des bureaux et des centres de données, papier, piles.",
+  data: "Tonnes par type de déchet et par filière de traitement.",
+  calc: "Tonnes × facteur de la filière.",
+  trap: "Les produits vendus arrivés en fin de vie ne sont pas des déchets des sites : ils vont en catégorie 12.",
+  wl: "D'après le rapport : tonnages par filière multipliés par des facteurs de l'ADEME ou du DEFRA." },
+{ n: 6, side: "amont", en: "Business travel", fr: "Déplacements professionnels", mod: "m15", conf: [7, 4],
+  one: "Les missions, dans des véhicules qui n'appartiennent pas à l'entreprise.",
+  what: "Les trajets des salariés pour le travail en avion, train, taxi, voiture de location ou voiture personnelle. Les nuits d'hôtel sont en option.",
+  ex: "Un vol Paris – Madrid, un taxi, un trajet en train entre deux sites.",
+  data: "Distances par mode, issues de l'agence de voyages ou des notes de frais ; à défaut, montants.",
+  calc: "Distance × facteur du mode ; à défaut, montant ÷ prix au kilomètre × facteur.",
+  trap: "Une voiture de la flotte n'entre pas dans cette catégorie : son carburant est du scope 1.",
+  wl: "D'après le rapport : distances des vols et des trains issues des agences de voyages ; taxis estimés à partir des montants (0,20 kg par km) ; hôtels à 0,32 kgCO₂e par euro dépensé." },
+{ n: 7, side: "amont", en: "Employee commuting", fr: "Trajets domicile-travail", mod: "m15", conf: [6],
+  one: "Le chemin quotidien entre la maison et le bureau.",
+  what: "Les trajets des salariés entre leur domicile et leur lieu de travail. Le télétravail est en option.",
+  ex: "25 km aller-retour en voiture, 200 jours par an : une tonne de CO₂e.",
+  data: "Enquête auprès des salariés : distance, mode de transport, jours sur site.",
+  calc: "Distance × jours × facteur du mode, puis extrapolation à tout l'effectif.",
+  trap: "Le résultat repose sur un échantillon : le taux de réponse et l'extrapolation pèsent plus que le facteur d'émission.",
+  wl: "D'après le rapport : enquête de 2023 auprès des salariés (27 % de réponses), extrapolée à l'effectif ; télétravail exclu." },
+{ n: 8, side: "amont", en: "Upstream leased assets", fr: "Actifs loués en amont", mod: "m16", conf: [13, 1, 2],
+  one: "Ce que l'entreprise loue et occupe, sans l'exploiter elle-même.",
+  what: "Le fonctionnement des actifs pris en location, quand il n'est pas déjà dans les scopes 1 et 2 : bureaux, véhicules, équipements.",
+  ex: "Un bureau dont le bailleur gère l'énergie et la refacture dans les charges.",
+  data: "Consommations communiquées par le bailleur ; à défaut, surfaces ; à défaut, loyers et charges.",
+  calc: "kWh × facteur ; sinon m² × intensité × facteur ; sinon dépense × ratio monétaire.",
+  trap: "Si l'entreprise exploite elle-même l'actif, l'énergie va en scopes 1 et 2. La compter aussi ici serait un double compte.",
+  wl: "D'après le rapport : surtout la location et le fonctionnement de bureaux et de voitures de société, par la méthode des dépenses. Le carburant des voitures thermiques de la flotte est, lui, en scope 1." },
+{ n: 9, side: "aval", en: "Downstream transportation and distribution", fr: "Transport et distribution aval", conf: [4],
+  one: "Le transport des produits vendus, quand ce n'est pas l'entreprise qui paie.",
+  what: "Le transport et le stockage des produits après la vente, dans des véhicules et des entrepôts que l'entreprise ne possède pas et ne paie pas.",
+  ex: "Un distributeur qui vient chercher les produits et les livre à ses propres clients.",
+  data: "Tonnes et distances estimées, par mode de transport.",
+  calc: "Tonnes × kilomètres × facteur du mode.",
+  trap: "Si l'entreprise paie le transporteur, c'est la catégorie 4." },
+{ n: 10, side: "aval", en: "Processing of sold products", fr: "Transformation des produits vendus", conf: [11],
+  one: "Quand le client doit encore transformer ce qu'on lui vend.",
+  what: "Les émissions de transformation des produits intermédiaires par les entreprises clientes : de l'acier vendu à un constructeur automobile, par exemple.",
+  ex: "Sans objet pour une entreprise qui vend des services et des produits finis.",
+  data: "Quantités vendues et procédés des clients.",
+  calc: "Quantité × facteur du procédé de transformation.",
+  trap: "Elle ne concerne que les produits intermédiaires. L'usage d'un produit fini relève de la catégorie 11." },
+{ n: 11, side: "aval", en: "Use of sold products", fr: "Usage des produits vendus", mod: "m17", conf: [12, 1],
+  one: "Ce que le produit consommera chez le client, pendant toute sa vie.",
+  what: "Les émissions d'usage, sur toute leur durée de vie, des produits et services vendus dans l'année.",
+  ex: "L'électricité des terminaux de paiement chez les commerçants ; pour Worldline, l'empreinte des transactions de paiement.",
+  data: "Unités vendues, consommation par unité, durée de vie, pays d'usage.",
+  calc: "Unités × énergie sur la durée de vie × facteur du pays d'usage.",
+  trap: "On compte toute la durée de vie l'année de la vente, et pas seulement l'année en cours.",
+  wl: "D'après le rapport : analyse de cycle de vie d'une transaction de paiement, multipliée par les volumes de transactions." },
+{ n: 12, side: "aval", en: "End-of-life treatment of sold products", fr: "Fin de vie des produits vendus", mod: "m17", conf: [5, 11],
+  one: "Ce que deviennent les produits vendus quand ils sont jetés.",
+  what: "La collecte et le traitement, en fin de vie, des produits vendus dans l'année.",
+  ex: "Terminaux, cartes et tickets de paiement une fois jetés.",
+  data: "Masse des produits vendus et filières de traitement probables.",
+  calc: "Tonnes × facteur de la filière.",
+  trap: "À ne pas confondre avec les déchets des sites, qui vont en catégorie 5.",
+  wl: "D'après le rapport : fin de vie des tickets, des terminaux et des cartes, à partir de la même analyse de cycle de vie." },
+{ n: 13, side: "aval", en: "Downstream leased assets", fr: "Actifs loués en aval", mod: "m16", conf: [8],
+  one: "Ce que l'entreprise possède et loue à d'autres.",
+  what: "Le fonctionnement des actifs que l'entreprise donne en location, quand il n'est pas dans ses scopes 1 et 2.",
+  ex: "Un étage de bureaux loué à une autre société ; des équipements loués à des clients.",
+  data: "Consommations des locataires ; à défaut, surfaces louées.",
+  calc: "kWh × facteur, ou estimation par la surface.",
+  trap: "Le point de vue est celui du bailleur. Du point de vue du locataire, c'est la catégorie 8." },
+{ n: 14, side: "aval", en: "Franchises", fr: "Franchises", conf: [13],
+  one: "Les points de vente exploités par d'autres, sous l'enseigne de l'entreprise.",
+  what: "Les scopes 1 et 2 des franchisés, comptés par le franchiseur.",
+  ex: "Sans objet pour une entreprise sans réseau de franchise.",
+  data: "Consommations d'énergie des franchisés.",
+  calc: "Litres et kWh × facteurs d'émission.",
+  trap: "Elle ne concerne que le franchiseur. Le franchisé compte ses propres sites en scopes 1 et 2." },
+{ n: 15, side: "aval", en: "Investments", fr: "Investissements", conf: [1],
+  one: "Les émissions financées par l'argent placé ou prêté.",
+  what: "La part des émissions des entreprises et des projets dans lesquels l'entreprise investit. C'est la catégorie dominante des banques et des assureurs.",
+  ex: "Une participation minoritaire dans une autre société.",
+  data: "Montants investis et émissions des entreprises financées.",
+  calc: "Émissions de l'entreprise financée × part détenue.",
+  trap: "Une filiale consolidée n'est pas un investissement : ses émissions sont déjà dans les scopes 1, 2 et 3 du groupe." }
+];
+WL.S3CAT = {}; WL.S3CATS.forEach(function (c) { WL.S3CAT[c.n] = c; });
+
+})(window.WL);
+
 /* Comprendre, expérimenter, diagnostiquer, réviser : vues et logique. */
 (function (WL) {
 "use strict";
 
 var A, f = WL.fmt, X = WL.X = {};
 X.init = function (app) { A = app; };
-function nb(s) { return s.replace(/(\d) (?=\d{3}(?!\d))/g, "$1\u202F").replace(/(\d) (%|€|kWh|kW|MWh|L|kg|km|m²|t|h)(?![A-Za-zÀ-ÿ])/g, "$1\u00A0$2").replace(/ ([?!:;»])/g, "\u00A0$1").replace(/« /g, "«\u00A0"); }
+function nb(s) { return s.replace(/(\d) (?=\d{3}(?!\d))/g, "$1\u202F").replace(/(\d) (%|€|k€|kWh|kW|MWh|GWh|L|kg|km|m²|t|h|W|g|tCO₂e|kgCO₂e|gCO₂e)(?![A-Za-zÀ-ÿ])/g, "$1\u00A0$2").replace(/ ([?!:;»])/g, "\u00A0$1").replace(/« /g, "«\u00A0"); }
 function nbHtml(h) { return h.replace(/>[^<]+</g, function (m) { return nb(m); }); }
 function esc(s) { return nb(A.esc(s)); }
 function ui(n, c) { return A.ui(n, c); }
@@ -1867,29 +2523,33 @@ X.renderComp = function () {
   if (sub && sub.t === "proof" && WL.MOD[sub.id]) { return renderProof(sub.id, !!sub.rev); }
   if (sub && sub.t === "case" && WL.CASE[sub.id]) { return renderCase(sub.id); }
   if (sub && sub.t === "src") { return renderSrc(); }
-  var labs = WL.MODS.filter(function (m) { return (A.store.mods[m.id] || {}).lab; }).length;
-  var items = WL.MODS.map(function (m) {
+  var labs = WL.MODS.filter(function (m) { return (A.store.mods[m.id] || {}).lab; }).length, nm = WL.MODS.length;
+  function item(m) {
     var st = modState(m);
     return '<li><button class="item" data-mod="' + m.id + '"><span class="num">' + m.n + '</span><span><span class="t">' + esc(m.title) + '</span><span class="s" style="display:block">' + esc(m.sub) + '</span></span>'
       + (st[0] ? '<span class="st ' + st[1] + '">' + st[0] + '</span>' : ui("chev", "go")) + '</button></li>';
-  }).join("");
+  }
+  var ener = WL.MODS.filter(function (m) { return m.track !== "s3"; }), s3 = WL.MODS.filter(function (m) { return m.track === "s3"; });
   var cases = WL.CASES.map(function (c) {
     return '<li><button class="item' + (A.store.cases[c.id] ? ' done' : '') + '" data-case="' + c.id + '"><span class="num">' + ui("route") + '</span><span><span class="t">' + esc(c.title) + '</span><span class="s" style="display:block">' + esc(c.sub) + '</span></span>' + ui("chev", "go") + '</button></li>';
   }).join("");
   A.main.innerHTML =
-    '<div class="page"><h1>Comprendre</h1><p class="sub">La physique derrière les indicateurs. Dix notions, dans l\'ordre : chacune part d\'un document que tu connais, se teste dans un simulateur, puis se prouve.</p></div>'
-    + '<div class="progress" style="margin-top:14px"><div><b>' + X.acquired() + '/10</b><span>notions acquises</span></div><div><b>' + labs + '/10</b><span>simulateurs faits</span></div><div><b>' + X.dueMods().length + '</b><span>à re-prouver</span></div></div>'
-    + '<h2 class="sec">Les dix notions</h2><ul class="list">' + items + '</ul>'
-    + '<h2 class="sec">Fils rouges</h2><p class="hint" style="margin:-4px 0 10px">Cinq situations de ton travail, suivies d\'un domaine à l\'autre : combustible, chaleur, climat, économie, droit.</p><ul class="list">' + cases + '</ul>'
+    '<div class="page"><h1>Comprendre</h1><p class="sub">La physique derrière les indicateurs, puis la chaîne de valeur. Chaque notion part d\'un document que tu connais, se teste dans un simulateur, puis se prouve.</p></div>'
+    + '<div class="progress" style="margin-top:14px"><div><b>' + X.acquired() + '/' + nm + '</b><span>notions acquises</span></div><div><b>' + labs + '/' + nm + '</b><span>simulateurs faits</span></div><div><b>' + X.dueMods().length + '</b><span>à re-prouver</span></div></div>'
+    + '<h2 class="sec">Énergie · ' + ener.length + ' notions</h2><ul class="list">' + ener.map(item).join("") + '</ul>'
+    + '<h2 class="sec">Scope 3 · ' + s3.length + ' notions</h2><p class="hint" style="margin:-4px 0 10px">La chaîne de valeur : achats, énergie en amont, déplacements, actifs loués, produits vendus.</p><ul class="list">' + s3.map(item).join("") + '</ul>'
+    + '<button class="btn ghost" id="tos3" style="margin-top:10px">Les 15 catégories du scope 3</button>'
+    + '<h2 class="sec">Fils rouges</h2><p class="hint" style="margin:-4px 0 10px">' + WL.CASES.length + ' situations de ton travail, suivies d\'un domaine à l\'autre : énergie, climat, achats, économie, droit.</p><ul class="list">' + cases + '</ul>'
     + '<button class="btn ghost" id="src" style="margin-top:18px">Sources et ordres de grandeur</button>';
   on("[data-mod]", function (b) { A.go("comp", { t: "mod", id: b.getAttribute("data-mod") }); });
   on("[data-case]", function (b) { A.go("comp", { t: "case", id: b.getAttribute("data-case") }); });
   $("#src").addEventListener("click", function () { A.go("comp", { t: "src" }); });
+  $("#tos3").addEventListener("click", function () { A.go("s3"); });
 };
 
 /* ---------- une notion ---------- */
-function docCard(e) {
-  return '<div class="doc u-kWh"><header><span>' + esc(e[0]) + '</span><em>exemple fictif</em></header>'
+function docCard(e, tag) {
+  return '<div class="doc u-kWh"><header><span>' + esc(e[0]) + '</span><em>' + esc(tag || "exemple fictif") + '</em></header>'
     + e.slice(1).map(function (r) { return '<div class="drow"><span>' + esc(r[0]) + '</span><span>' + esc(r[1]) + '</span></div>'; }).join("") + '<div class="dpad"></div></div>';
 }
 function renderMod(id) {
@@ -1902,7 +2562,7 @@ function renderMod(id) {
     + '<div class="chips" style="margin-top:10px">' + m.dom.map(function (d) { return '<span class="pill">' + WL.DOMAINS[d] + '</span>'; }).join("") + '</div></div>'
     + '<div class="trail"><span class="on">1 Comprendre</span><span class="' + (st.lab ? 'on' : '') + '">2 Expérimenter</span><span class="' + (st.t ? 'on' : '') + '">3 Prouver</span></div>'
     + '<div class="lesson">'
-    + '<h2>Point de départ</h2>' + docCard(m.entry) + '<p class="quote">' + esc(m.ask) + '</p>'
+    + '<h2>Point de départ</h2>' + docCard(m.entry, m.entryTag) + '<p class="quote">' + esc(m.ask) + '</p>'
     + '<h2>Le phénomène</h2>' + nbHtml(m.body())
     + '<h2>Si une notion te manque</h2>' + m.pre.map(function (p) { return '<details class="pre"><summary>' + esc(p[0]) + '</summary><p>' + esc(p[1]) + '</p></details>'; }).join("")
     + '<h2>Le calcul</h2><div class="formula"><span>' + esc(m.formula[0]) + '</span><b>=</b><span>' + esc(m.formula[1]) + '</span></div><div class="card"><b>Exemple</b><p style="margin-top:6px">' + nbHtml('>' + m.example + '<').slice(1, -1) + '</p></div>'
@@ -2116,6 +2776,56 @@ function renderSrc() {
   $("#back").addEventListener("click", function () { A.go("comp"); });
 }
 
+
+/* ---------- Scope 3 : les 15 catégories ---------- */
+function share(n) { var v = WL.S3WL.cats[n]; if (!v) { return ""; } var p = v / WL.S3WL.s3 * 100; return (p >= 1 ? String(Math.round(p)) : f(p, 1)) + " %"; }
+X.renderS3 = function () {
+  var sub = A.S.sub, W = WL.S3WL;
+  if (sub && sub.t === "cat" && WL.S3CAT[sub.n]) { return renderCat(sub.n); }
+  var seen = WL.S3CATS.filter(function (c) { return A.store.seen["s3c" + c.n]; }).length;
+  function rowc(c) {
+    var sh = share(c.n);
+    return '<li><button class="item' + (A.store.seen["s3c" + c.n] ? ' done' : '') + '" data-cat="' + c.n + '"><span class="num">' + c.n + '</span><span><span class="t">' + esc(c.fr) + '</span><span class="s" style="display:block">' + esc(c.en) + '</span></span>'
+      + (sh ? '<span class="st n">' + esc(sh) + '</span>' : ui("chev", "go")) + '</button></li>';
+  }
+  function grp(side) { return WL.S3CATS.filter(function (c) { return c.side === side; }).map(rowc).join(""); }
+  A.main.innerHTML =
+    '<div class="page"><button class="back" id="backf">' + ui("back") + 'Fiches</button><h1>Scope 3 : les 15 catégories</h1><p class="sub">La chaîne de valeur, de l\'amont à l\'aval. Le pourcentage indique le poids de la catégorie dans le scope 3 de Worldline en ' + W.year + '.</p></div>'
+    + '<div class="progress" style="margin-top:14px"><div><b>' + Math.round(W.s3 / W.total * 100) + ' %</b><span>du total des émissions</span></div><div><b>' + f(W.s3 / 1000, 0) + ' kt</b><span>de CO₂e en ' + W.year + '</span></div><div><b>' + seen + '/15</b><span>fiches comprises</span></div></div>'
+    + '<div class="row2" style="margin-top:14px"><button class="btn ghost sm" id="tocomp">' + ui("bulb") + 'Les notions</button><button class="btn ghost sm" id="toquiz">' + ui("target") + 'Quiz scope 3</button></div>'
+    + '<h2 class="sec">Amont · catégories 1 à 8</h2><ul class="list">' + grp("amont") + '</ul>'
+    + '<h2 class="sec">Aval · catégories 9 à 15</h2><ul class="list">' + grp("aval") + '</ul>'
+    + '<p class="hint" style="margin-top:18px">Chiffres : rapport de durabilité ' + W.year + ' de Worldline. Les catégories sans pourcentage n\'y sont pas publiées. Règles : GHG Protocol, norme Scope 3.</p>';
+  $("#backf").addEventListener("click", function () { A.go("fiches"); });
+  $("#tocomp").addEventListener("click", function () { A.go("comp"); });
+  $("#toquiz").addEventListener("click", function () { A.startMode("s3"); });
+  on("[data-cat]", function (b) { A.go("s3", { t: "cat", n: parseInt(b.getAttribute("data-cat"), 10) }); });
+};
+function renderCat(n) {
+  var c = WL.S3CAT[n], W = WL.S3WL, v = W.cats[n], key = "s3c" + n, seen = !!A.store.seen[key], m = c.mod && WL.MOD[c.mod];
+  var conf = (c.conf || []).map(function (k) { var o = WL.S3CAT[k]; return '<button class="link" data-cat="' + k + '"><span class="catmini">' + k + '</span><span>' + esc(o.fr) + '</span></button>'; }).join("");
+  function blk(t, x) { return '<div class="blk"><h2>' + t + '</h2><p>' + esc(x) + '</p></div>'; }
+  A.main.innerHTML =
+    '<div class="page"><button class="back" id="back">' + ui("back") + 'Scope 3</button></div>'
+    + '<div class="stack">'
+    + '<div class="kpihero u-km"><span class="catn">' + n + '</span><div class="meta"><span class="pill">' + (c.side === "amont" ? "Amont" : "Aval") + '</span><span class="pill">Scope 3 · catégorie ' + n + '</span></div></div>'
+    + '<div class="page"><h1>' + esc(c.fr) + '</h1><p class="sub">' + esc(c.en) + '</p></div>'
+    + '<p class="quote">' + esc(c.one) + '</p>'
+    + blk("Ce que c'est", c.what) + blk("Un exemple", c.ex) + blk("La donnée à collecter", c.data) + blk("Le calcul", c.calc)
+    + '<div class="callout warn">' + ui("warn") + '<div><h3>Point de vigilance</h3><p>' + esc(c.trap) + '</p></div></div>'
+    + '<div class="card"><b>Chez Worldline en ' + W.year + '</b>'
+    + (v ? '<p style="margin-top:6px">' + esc(f(v, 0) + " tCO₂e, soit " + share(n) + " du scope 3.") + '</p>' + (c.wl ? '<p class="hint" style="margin-top:4px">' + esc(c.wl) + '</p>' : '')
+         : '<p class="hint" style="margin-top:6px">Catégorie non publiée dans le rapport de durabilité ' + W.year + '.</p>') + '</div>'
+    + (conf ? '<div class="blk"><h2>À ne pas confondre avec</h2><div class="chips">' + conf + '</div></div>' : '')
+    + (m ? '<button class="btn ghost" id="tomod">Notion ' + m.n + ' : ' + esc(m.title) + '</button>' : '')
+    + '<button class="btn' + (seen ? ' on' : '') + '" id="mark">' + (seen ? '✓ Fiche comprise' : 'Je maîtrise cette fiche') + '</button>'
+    + '</div>';
+  $("#back").addEventListener("click", function () { A.go("s3"); });
+  $("#mark").addEventListener("click", function () { A.store.seen[key] = !A.store.seen[key]; A.save(); var y = window.scrollY; renderCat(n); try { window.scrollTo(0, y); } catch (e) {} });
+  var tm = $("#tomod"); if (tm) { tm.addEventListener("click", function () { A.go("comp", { t: "mod", id: m.id }); }); }
+  on("[data-cat]", function (b) { A.go("s3", { t: "cat", n: parseInt(b.getAttribute("data-cat"), 10) }); });
+}
+
 /* ---------- Réviser ---------- */
 X.renderRev = function () {
   var sub = A.S.sub;
@@ -2242,7 +2952,7 @@ var TABS = [
   { id: "quiz", label: "Quiz", icon: "target" },
   { id: "rev", label: "Réviser", icon: "shuffle" }
 ];
-var ALIAS = { classer: "fiches", gloss: "fiches" };
+var ALIAS = { classer: "fiches", gloss: "fiches", s3: "fiches" };
 function drawTabs() {
   byId("tabs").innerHTML = TABS.map(function (t) {
     return '<button class="tab" data-tab="' + t.id + '"' + ((ALIAS[S.tab] || S.tab) === t.id ? ' aria-current="page"' : '') + '>' + ui(t.icon) + '<span>' + t.label + '</span>' + (t.id === "rev" && WL.X.dueCount() ? '<i class="dot" aria-label="révisions dues"></i>' : '') + '</button>';
@@ -2267,6 +2977,7 @@ function render() {
   else if (t === "quiz") { sess ? (sess.done ? renderResult() : renderQuestion()) : renderQuizHome(); }
   else if (t === "comp") { WL.X.renderComp(); }
   else if (t === "rev") { WL.X.renderRev(); }
+  else if (t === "s3") { WL.X.renderS3(); }
   else { renderGloss(); }
   try { document.title = "Indicateurs Worldline"; } catch (e) {}
 }
@@ -2300,7 +3011,8 @@ function renderBases() {
 function todayCard() {
   var due = WL.X.dueCount(), acq = WL.X.acquired();
   return '<h2 class="sec">Aller plus loin</h2><div class="stack">'
-    + '<button class="mode" data-go="comp"><span class="num">' + ui("bulb") + '</span><span><span class="t">Comprendre la physique</span><br><span class="s">Dix notions, des simulateurs, des épreuves</span></span><span class="b">' + acq + '/10</span></button>'
+    + '<button class="mode" data-go="comp"><span class="num">' + ui("bulb") + '</span><span><span class="t">Comprendre</span><br><span class="s">L\'énergie, puis le scope 3 : notions, simulateurs, épreuves</span></span><span class="b">' + acq + '/' + WL.MODS.length + '</span></button>'
+    + '<button class="mode" data-go="s3"><span class="num">' + ui("route") + '</span><span><span class="t">Scope 3 : la chaîne de valeur</span><br><span class="s">Les 15 catégories, avec les chiffres 2025 de Worldline</span></span><span class="b">' + ui("chev") + '</span></button>'
     + '<button class="mode" data-go="rev"><span class="num">' + ui("shuffle") + '</span><span><span class="t">Réviser</span><br><span class="s">' + (due ? 'Des révisions sont dues aujourd\'hui' : 'Rien de dû aujourd\'hui') + '</span></span><span class="b">' + (due || '') + '</span></button></div>';
 }
 
@@ -2338,6 +3050,7 @@ function renderFiches() {
   main.innerHTML =
     '<div class="page"><h1>Les 20 fiches</h1><p class="sub">Touche un indicateur : image, exemple de document et piège à éviter.</p></div>'
     + '<div class="row2" style="margin-top:14px"><button class="btn ghost sm" data-go="classer">' + ui("route") + 'Classer une donnée</button><button class="btn ghost sm" data-go="gloss">' + ui("abc") + 'Glossaire</button></div>'
+    + '<button class="mode" data-go="s3" style="margin-top:10px"><span class="num">' + ui("route") + '</span><span><span class="t">Scope 3 : les 15 catégories</span><br><span class="s">La chaîne de valeur, de l\'amont à l\'aval</span></span><span class="b">' + ui("chev") + '</span></button>'
     + '<div class="filters" style="margin-top:14px">' + filters.map(function (x) { return '<button class="f" data-f="' + x[0] + '" aria-pressed="' + (f === x[0]) + '">' + x[1] + '</button>'; }).join("") + '</div>'
     + body;
   Array.prototype.forEach.call(main.querySelectorAll("[data-f]"), function (b) {
@@ -2564,11 +3277,11 @@ function renderGloss() {
 }
 
 /* ---------- démarrage ---------- */
-WL.X.init({ ui: ui, esc: esc, shuffle: shuffle, byId: byId, store: store, save: save, load: loadStore, go: go, S: S, main: main, buzz: buzz, toTop: toTop, start: start, QBY: QBY });
+WL.X.init({ ui: ui, esc: esc, shuffle: shuffle, byId: byId, store: store, save: save, load: loadStore, go: go, S: S, main: main, buzz: buzz, toTop: toTop, start: start, startMode: startMode, QBY: QBY });
 var hot = window.claude && window.claude.hot;
 function boot(data) {
   if (data && data.S && typeof data.S.tab === "string") {
-    S.tab = /^(bases|fiches|classer|gloss|comp|quiz|rev)$/.test(data.S.tab) ? data.S.tab : "bases"; S.sub = data.S.sub || null; S.filter = data.S.filter || "all";
+    S.tab = /^(bases|fiches|classer|gloss|comp|quiz|rev|s3)$/.test(data.S.tab) ? data.S.tab : "bases"; S.sub = data.S.sub || null; S.filter = data.S.filter || "all";
     if (data.S.cls && Array.isArray(data.S.cls.stack)) { S.cls = data.S.cls; }
     var d = data.sess;
     if (d && Array.isArray(d.ids) && d.ids.every(function (id) { return QBY[id]; })) {
@@ -2576,6 +3289,7 @@ function boot(data) {
       if (!sess.done && sess.answered) { sess.i++; sess.answered = false; sess.order = null; if (sess.i >= sess.ids.length) { finish(); return; } }
     }
     if (S.sub && S.sub.t === "kpi" && !WL.KPI[S.sub.id]) { S.sub = null; }
+    if (S.sub && S.sub.t === "cat" && !WL.S3CAT[S.sub.n]) { S.sub = null; }
     if (S.sub && S.sub.t === "lesson" && !WL.LESSONS.some(function (l) { return l.id === S.sub.id; })) { S.sub = null; }
   }
   render();
